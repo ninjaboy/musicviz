@@ -3,7 +3,7 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
-    <title>PITCH.ANALYZER v1.1.1</title>
+    <title>PITCH.ANALYZER v1.1.2</title>
     <link rel="icon" href="data:image/svg+xml,<svg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 100 100'><text y='80' font-size='80' fill='%2300ff41'>🎵</text></svg>">
     <style>
         * {
@@ -220,6 +220,8 @@
 
         .compact-card {
             padding: 5px 8px;
+            min-height: 70px;
+            max-height: 70px;
         }
 
         .note-display-card {
@@ -228,9 +230,10 @@
 
         .detected-note-wrapper {
             min-height: 35px;
+            max-height: 35px;
             display: flex;
             align-items: center;
-            justify-content: center;
+            justify-content: flex-start;
             overflow: hidden;
         }
 
@@ -253,6 +256,9 @@
             color: var(--dim-green);
             margin-bottom: 8px;
             font-family: 'Share Tech Mono', monospace;
+            min-height: 20px;
+            max-height: 20px;
+            overflow: hidden;
         }
 
         .frequency::before {
@@ -486,6 +492,8 @@
         .note-stream-card {
             padding: 8px;
             margin-bottom: 8px;
+            min-height: 75px;
+            max-height: 75px;
         }
 
         .note-stream {
@@ -498,6 +506,7 @@
             overflow-y: hidden;
             white-space: nowrap;
             min-height: 40px;
+            max-height: 40px;
             align-items: center;
             scroll-behavior: smooth;
         }

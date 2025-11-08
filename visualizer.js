@@ -445,8 +445,8 @@ class NoteVisualizer {
         this.analyser.getByteFrequencyData(this.dataArray);
 
         const nyquist = this.audioContext.sampleRate / 2;
-        const minFreq = 80;
-        const maxFreq = 2000;
+        const minFreq = 65; // Lowered from 80 to catch C2 (65.4Hz)
+        const maxFreq = 4000; // Doubled from 2000 to catch up to C8 (4186Hz)
         const minIndex = Math.floor(minFreq / nyquist * this.bufferLength);
         const maxIndexBound = Math.floor(maxFreq / nyquist * this.bufferLength);
 
@@ -693,9 +693,9 @@ class NoteVisualizer {
         const currentTime = (now - this.historyStartTime) / 1000;
         const startTime = Math.max(0, currentTime - this.maxHistoryDuration);
 
-        // Define note range for piano roll (C3 to C6 = 36 semitones)
-        const minMidi = 48; // C3
-        const maxMidi = 84; // C6
+        // Define note range for piano roll (C2 to C7 = 60 semitones)
+        const minMidi = 36; // C2 - extended lower
+        const maxMidi = 96; // C7 - extended higher
         const midiRange = maxMidi - minMidi;
 
         // Draw Y-axis with all detected notes
