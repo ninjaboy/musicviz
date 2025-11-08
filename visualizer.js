@@ -540,17 +540,10 @@ class NoteVisualizer {
         // 1 semitone = 100 cents
         const cents = Math.round((noteNum - noteNumRounded) * 100);
 
-        // Get note name - mark as "OTHER" if too far from standard pitch
-        let noteName;
+        // Get note name
         let octave = Math.floor(midiNote / 12) - 1;
         const noteIndex = midiNote % 12;
-
-        if (Math.abs(cents) > 35) {
-            // Too far from standard pitch - non-musical or noise
-            noteName = 'OTHER';
-        } else {
-            noteName = this.noteStrings[noteIndex] + octave;
-        }
+        const noteName = this.noteStrings[noteIndex] + octave;
 
         // Calculate the target frequency for this note
         this.targetFrequency = 440 * Math.pow(2, noteNumRounded / 12);
@@ -588,7 +581,8 @@ class NoteVisualizer {
             frequency: frequency,
             cents: note.cents,
             volume: volume,
-            timestamp: timestamp
+            timestamp: timestamp,
+            midiNote: note.midiNote
         });
 
         // Remove old notes beyond max duration
@@ -608,96 +602,120 @@ class NoteVisualizer {
         const height = this.timelineCanvas.height;
 
         // Clear canvas
-        this.timelineCtx.fillStyle = 'rgba(0, 0, 0, 0.8)';
+        this.timelineCtx.fillStyle = 'rgba(0, 0, 0, 0.9)';
         this.timelineCtx.fillRect(0, 0, width, height);
 
-        if (this.noteHistory.length === 0 && this.waveformHistory.length === 0) return;
+        if (this.noteHistory.length === 0) return;
 
         const now = Date.now();
         const currentTime = (now - this.historyStartTime) / 1000;
         const startTime = Math.max(0, currentTime - this.maxHistoryDuration);
 
-        // Draw waveform heartbeat (amplitude over time)
-        if (this.waveformHistory.length > 1) {
+        // Define note range for piano roll (C3 to C6 = 36 semitones)
+        const minMidi = 48; // C3
+        const maxMidi = 84; // C6
+        const midiRange = maxMidi - minMidi;
+
+        // Draw horizontal grid lines for octaves
+        this.timelineCtx.strokeStyle = 'rgba(0, 255, 65, 0.1)';
+        this.timelineCtx.lineWidth = 1;
+        for (let octave = 3; octave <= 6; octave++) {
+            const midiC = (octave + 1) * 12; // C note of this octave
+            const y = height - ((midiC - minMidi) / midiRange) * height;
+
             this.timelineCtx.beginPath();
-            this.timelineCtx.strokeStyle = 'rgba(0, 255, 65, 0.4)';
-            this.timelineCtx.lineWidth = 2;
-
-            let firstPoint = true;
-            this.waveformHistory.forEach(item => {
-                const x = ((item.timestamp - startTime) / this.maxHistoryDuration) * width;
-                const normalizedAmp = item.amplitude / 255;
-                const y = height - (normalizedAmp * height * 0.7);
-
-                if (firstPoint) {
-                    this.timelineCtx.moveTo(x, y);
-                    firstPoint = false;
-                } else {
-                    this.timelineCtx.lineTo(x, y);
-                }
-            });
-
+            this.timelineCtx.moveTo(0, y);
+            this.timelineCtx.lineTo(width, y);
             this.timelineCtx.stroke();
 
-            // Fill area under waveform with gradient
-            this.timelineCtx.lineTo(width, height);
-            this.timelineCtx.lineTo(((this.waveformHistory[0].timestamp - startTime) / this.maxHistoryDuration) * width, height);
-            this.timelineCtx.closePath();
-
-            const gradient = this.timelineCtx.createLinearGradient(0, 0, 0, height);
-            gradient.addColorStop(0, 'rgba(0, 255, 65, 0.3)');
-            gradient.addColorStop(1, 'rgba(0, 255, 65, 0.0)');
-            this.timelineCtx.fillStyle = gradient;
-            this.timelineCtx.fill();
+            // Label octave
+            this.timelineCtx.fillStyle = 'rgba(0, 255, 65, 0.4)';
+            this.timelineCtx.font = '9px "Share Tech Mono", monospace';
+            this.timelineCtx.fillText(`C${octave}`, 3, y - 2);
         }
 
-        // Draw note markers on top of waveform
+        // Group consecutive notes into horizontal bars (piano roll style)
+        const noteGroups = new Map(); // Map of "midiNote" -> array of time segments
+
         this.noteHistory.forEach((item, index) => {
-            const x = ((item.timestamp - startTime) / this.maxHistoryDuration) * width;
+            const midiNote = item.midiNote || this.noteToMidi(item.note);
 
-            // Color based on note type
-            let color;
-            if (item.note === 'OTHER') {
-                color = 'rgba(255, 170, 0, 0.8)'; // Orange
-            } else if (Math.abs(item.cents) < 5) {
-                color = 'rgba(0, 255, 255, 1.0)'; // Cyan for perfect
+            if (!noteGroups.has(midiNote)) {
+                noteGroups.set(midiNote, []);
+            }
+
+            // Check if this continues the previous note
+            const groups = noteGroups.get(midiNote);
+            const lastGroup = groups[groups.length - 1];
+
+            if (lastGroup && item.timestamp - lastGroup.endTime < 0.15) {
+                // Continue existing group
+                lastGroup.endTime = item.timestamp;
+                lastGroup.cents = item.cents; // Update cents
             } else {
-                color = 'rgba(0, 255, 65, 0.8)'; // Green
-            }
-
-            // Draw vertical note marker
-            this.timelineCtx.strokeStyle = color;
-            this.timelineCtx.lineWidth = 2;
-            this.timelineCtx.beginPath();
-            this.timelineCtx.moveTo(x, height * 0.3);
-            this.timelineCtx.lineTo(x, height);
-            this.timelineCtx.stroke();
-
-            // Add glow effect for recent notes
-            if (index >= this.noteHistory.length - 10) {
-                this.timelineCtx.shadowColor = color;
-                this.timelineCtx.shadowBlur = 8;
-                this.timelineCtx.strokeStyle = color;
-                this.timelineCtx.beginPath();
-                this.timelineCtx.moveTo(x, height * 0.3);
-                this.timelineCtx.lineTo(x, height);
-                this.timelineCtx.stroke();
-                this.timelineCtx.shadowBlur = 0;
-            }
-
-            // Draw note label for perfect pitches
-            if (Math.abs(item.cents) < 5 && index % 20 === 0 && item.note !== 'OTHER') {
-                this.timelineCtx.fillStyle = 'rgba(0, 255, 255, 0.9)';
-                this.timelineCtx.font = '10px "Share Tech Mono", monospace';
-                this.timelineCtx.shadowColor = 'rgba(0, 255, 255, 0.8)';
-                this.timelineCtx.shadowBlur = 5;
-                this.timelineCtx.fillText(item.note, x + 2, height * 0.25);
-                this.timelineCtx.shadowBlur = 0;
+                // Start new group
+                groups.push({
+                    startTime: item.timestamp,
+                    endTime: item.timestamp,
+                    note: item.note,
+                    cents: item.cents,
+                    midiNote: midiNote
+                });
             }
         });
 
+        // Draw note bars
+        noteGroups.forEach((groups, midiNote) => {
+            groups.forEach(group => {
+                if (midiNote < minMidi || midiNote > maxMidi) return;
+
+                const x1 = ((group.startTime - startTime) / this.maxHistoryDuration) * width;
+                const x2 = ((group.endTime - startTime) / this.maxHistoryDuration) * width;
+                const barWidth = Math.max(x2 - x1, 3); // Minimum 3px width
+
+                // Calculate Y position (piano roll style)
+                const y = height - ((midiNote - minMidi) / midiRange) * height;
+                const barHeight = Math.max(height / midiRange * 0.8, 3);
+
+                // Color based on pitch accuracy
+                let color;
+                if (Math.abs(group.cents) < 5) {
+                    color = 'rgba(0, 255, 255, 0.9)'; // Cyan for perfect
+                } else if (Math.abs(group.cents) < 15) {
+                    color = 'rgba(0, 255, 65, 0.8)'; // Green for close
+                } else {
+                    color = 'rgba(255, 170, 0, 0.7)'; // Orange for off-pitch
+                }
+
+                // Draw note bar
+                this.timelineCtx.fillStyle = color;
+                this.timelineCtx.fillRect(x1, y - barHeight / 2, barWidth, barHeight);
+
+                // Add border
+                this.timelineCtx.strokeStyle = 'rgba(0, 0, 0, 0.5)';
+                this.timelineCtx.lineWidth = 1;
+                this.timelineCtx.strokeRect(x1, y - barHeight / 2, barWidth, barHeight);
+
+                // Add glow for perfect pitch
+                if (Math.abs(group.cents) < 5 && barWidth > 10) {
+                    this.timelineCtx.shadowColor = color;
+                    this.timelineCtx.shadowBlur = 8;
+                    this.timelineCtx.fillStyle = color;
+                    this.timelineCtx.fillRect(x1, y - barHeight / 2, barWidth, barHeight);
+                    this.timelineCtx.shadowBlur = 0;
+                }
+
+                // Draw note label if bar is wide enough
+                if (barWidth > 25) {
+                    this.timelineCtx.fillStyle = 'rgba(0, 0, 0, 0.8)';
+                    this.timelineCtx.font = '9px "Share Tech Mono", monospace';
+                    this.timelineCtx.fillText(group.note, x1 + 3, y + 3);
+                }
+            });
+        });
+
         // Draw current time indicator
-        this.timelineCtx.strokeStyle = 'rgba(0, 255, 255, 0.6)';
+        this.timelineCtx.strokeStyle = 'rgba(0, 255, 255, 0.8)';
         this.timelineCtx.lineWidth = 2;
         this.timelineCtx.setLineDash([5, 5]);
         this.timelineCtx.beginPath();
@@ -705,6 +723,20 @@ class NoteVisualizer {
         this.timelineCtx.lineTo(width - 2, height);
         this.timelineCtx.stroke();
         this.timelineCtx.setLineDash([]);
+    }
+
+    noteToMidi(noteName) {
+        // Extract note and octave from string like "C4" or "F#5"
+        const match = noteName.match(/^([A-G]#?)(\d+)$/);
+        if (!match) return 60; // Default to C4
+
+        const note = match[1];
+        const octave = parseInt(match[2]);
+
+        const noteIndex = this.noteStrings.indexOf(note);
+        if (noteIndex === -1) return 60;
+
+        return (octave + 1) * 12 + noteIndex;
     }
 
     drawVisualization() {
