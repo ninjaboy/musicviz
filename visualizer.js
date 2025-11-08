@@ -21,8 +21,6 @@ class NoteVisualizer {
         this.startBtn = document.getElementById('startBtn');
         this.noteNameElement = document.getElementById('noteName');
         this.frequencyElement = document.getElementById('frequency');
-        this.volumeFill = document.getElementById('volumeFill');
-        this.volumePercent = document.getElementById('volumePercent');
         this.pitchIndicator = document.getElementById('pitchIndicator');
         this.pitchHint = document.getElementById('pitchHint');
         this.messageElement = document.getElementById('message');
@@ -176,8 +174,6 @@ class NoteVisualizer {
         this.noteNameElement.textContent = '--';
         this.frequencyElement.textContent = '-- Hz';
         this.pitchHint.innerHTML = '';
-        this.volumeFill.style.width = '0%';
-        this.volumePercent.textContent = '0%';
     }
 
     playReferenceNote(btn) {
@@ -262,11 +258,9 @@ class NoteVisualizer {
         // Get frequency data
         this.analyser.getByteFrequencyData(this.dataArray);
 
-        // Get and display volume level
+        // Get volume level for tracking
         const volume = this.getAverageVolume();
         const volumePercent = (volume / 255) * 100;
-        this.volumeFill.style.width = `${volumePercent}%`;
-        this.volumePercent.textContent = `${Math.round(volumePercent)}%`;
 
         // Detect all frequencies (multi-note detection)
         const detectedFrequencies = this.detectPitch();

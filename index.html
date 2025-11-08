@@ -3,7 +3,8 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
-    <title>PITCH.ANALYZER v1.0.3</title>
+    <title>PITCH.ANALYZER v1.0.4</title>
+    <link rel="icon" href="data:image/svg+xml,<svg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 100 100'><text y='80' font-size='80' fill='%2300ff41'>🎵</text></svg>">
     <style>
         * {
             margin: 0;
@@ -111,7 +112,11 @@
             display: flex;
             gap: 8px;
             flex-wrap: wrap;
-            justify-content: center;
+            justify-content: flex-start;
+        }
+
+        .button-group button {
+            flex: 0 0 auto;
         }
 
         button {
@@ -659,11 +664,9 @@
 
             /* Make buttons more compact */
             .button-group button {
-                flex: 1;
+                flex: 0 0 auto;
                 min-width: 0;
                 white-space: nowrap;
-                overflow: hidden;
-                text-overflow: ellipsis;
             }
 
             /* Reduce header size */
