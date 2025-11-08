@@ -3,7 +3,7 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
-    <title>PITCH.ANALYZER v1.1.3</title>
+    <title>PITCH.ANALYZER v1.1.4</title>
     <link rel="icon" href="data:image/svg+xml,<svg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 100 100'><text y='80' font-size='80' fill='%2300ff41'>🎵</text></svg>">
     <style>
         * {
@@ -251,6 +251,49 @@
             background: rgba(0, 0, 0, 0.8);
             border: 1px solid var(--dim-green);
             height: 6px;
+        }
+
+        /* Toggle Section */
+        .toggle-section {
+            margin-top: 15px;
+            padding-top: 15px;
+            border-top: 1px solid rgba(0, 255, 65, 0.2);
+        }
+
+        .toggle-label {
+            display: flex;
+            align-items: center;
+            gap: 10px;
+            cursor: pointer;
+            font-family: 'Share Tech Mono', monospace;
+            font-size: 0.75rem;
+            color: var(--matrix-green);
+            text-transform: uppercase;
+            letter-spacing: 1px;
+        }
+
+        .toggle-label input[type="checkbox"] {
+            width: 18px;
+            height: 18px;
+            cursor: pointer;
+            accent-color: var(--cyan);
+            border: 1px solid var(--dim-green);
+        }
+
+        .toggle-text {
+            color: var(--matrix-green);
+        }
+
+        .toggle-hint {
+            color: var(--dim-green);
+            font-size: 0.65rem;
+            opacity: 0.8;
+            text-transform: none;
+        }
+
+        .toggle-label:hover .toggle-text {
+            color: var(--cyan);
+            text-shadow: 0 0 5px rgba(0, 255, 255, 0.5);
         }
 
         .button-group {
@@ -1124,7 +1167,7 @@
         <header>
             <h1>PITCH.ANALYZER</h1>
             <p class="subtitle">MULTI-FREQ | HARMONIC FILTER | <span id="latency">0ms</span> LAT</p>
-            <span class="version">v1.1.3</span>
+            <span class="version">v1.1.4</span>
         </header>
 
         <div class="control-panel">
@@ -1175,6 +1218,14 @@
                     </label>
                     <input type="range" id="smoothingSlider" min="3" max="12" value="5" step="1">
                 </div>
+            </div>
+
+            <div class="toggle-section">
+                <label class="toggle-label">
+                    <input type="checkbox" id="harmonicFilterToggle" checked>
+                    <span class="toggle-text">Harmonic Filtering</span>
+                    <span class="toggle-hint">(OFF for chords/octaves)</span>
+                </label>
             </div>
         </div>
 

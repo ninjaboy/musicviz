@@ -54,6 +54,7 @@ class NoteVisualizer {
         // Noise filtering parameters (adjustable via UI)
         this.minAmplitudeThreshold = 30; // Amplitude threshold (default: balanced)
         this.minConfidenceForDisplay = 0.5; // Confidence threshold (default: balanced)
+        this.harmonicFilteringEnabled = true; // Harmonic filtering toggle (default: enabled)
 
         // Note frequencies (A4 = 440Hz standard)
         this.noteStrings = ["C", "C#", "D", "D#", "E", "F", "F#", "G", "G#", "A", "A#", "B"];
@@ -82,8 +83,8 @@ class NoteVisualizer {
         this.generateNoteButtons();
 
         // Console banner
-        console.log('%c🎵 PITCH.ANALYZER v1.1.3 [ADAPTIVE MODE]', 'color: #00ff41; font-size: 20px; font-weight: bold; text-shadow: 0 0 10px #00ff41;');
-        console.log('%cMulti-frequency • Harmonic filtering • Adjustable sensitivity', 'color: #00ffff; font-size: 12px;');
+        console.log('%c🎵 PITCH.ANALYZER v1.1.4 [ADAPTIVE MODE]', 'color: #00ff41; font-size: 20px; font-weight: bold; text-shadow: 0 0 10px #00ff41;');
+        console.log('%cMulti-frequency • Harmonic filtering toggle • Adjustable sensitivity', 'color: #00ffff; font-size: 12px;');
         console.log('%c━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━', 'color: #00ff41;');
     }
 
@@ -157,6 +158,16 @@ class NoteVisualizer {
                 this.applyPreset(e.target.dataset.preset);
             });
         });
+
+        // Harmonic filtering toggle
+        const harmonicFilterToggle = document.getElementById('harmonicFilterToggle');
+        if (harmonicFilterToggle) {
+            harmonicFilterToggle.addEventListener('change', (e) => {
+                this.harmonicFilteringEnabled = e.target.checked;
+                console.log(`%cHarmonic filtering: ${e.target.checked ? 'ON' : 'OFF'}`, 'color: #00ffff; font-weight: bold;');
+                this.showMessage(`Harmonic filtering ${e.target.checked ? 'enabled' : 'disabled'}`, 'success');
+            });
+        }
     }
 
     applyPreset(preset) {
@@ -622,7 +633,13 @@ class NoteVisualizer {
         // Sort by amplitude (loudest first)
         peaks.sort((a, b) => b.amplitude - a.amplitude);
 
-        // Filter out harmonics - keep only fundamentals (AGGRESSIVE)
+        // Skip harmonic filtering if disabled (for chords/octaves)
+        if (!this.harmonicFilteringEnabled) {
+            // Return top peaks without filtering
+            return peaks.slice(0, 5); // Allow up to 5 notes
+        }
+
+        // Filter out harmonics - keep only fundamentals
         const fundamentals = [];
         for (let i = 0; i < peaks.length; i++) {
             const peak = peaks[i];
@@ -636,16 +653,13 @@ class NoteVisualizer {
                 const ratio = peak.frequency / fundamental.frequency;
                 const nearestHarmonic = Math.round(ratio);
 
-                // ULTRA AGGRESSIVE: 20% tolerance to catch more edge cases
-                // Also check sub-harmonics (1/2, 1/3, etc.)
+                // 20% tolerance to catch edge cases
                 const harmonicTolerance = 0.20;
 
-                // Check integer harmonics (2x, 3x, 4x, 5x)
+                // Check integer harmonics (2x, 3x, 4x, 5x, 6x, 7x, 8x)
                 if (nearestHarmonic >= 2 && nearestHarmonic <= 8 &&
                     Math.abs(ratio - nearestHarmonic) < harmonicTolerance) {
                     isHarmonic = true;
-                    console.log(`%c  ⚠️ Filtered harmonic: ${peak.frequency.toFixed(2)}Hz (${nearestHarmonic}x of ${fundamental.frequency.toFixed(2)}Hz)`,
-                        'color: #ffaa00; font-size: 10px;');
                     break;
                 }
 
@@ -656,8 +670,6 @@ class NoteVisualizer {
                     Math.abs(inverseRatio - nearestSubHarmonic) < harmonicTolerance) {
                     // This peak is actually the fundamental, remove the existing one
                     fundamentals.splice(j, 1);
-                    console.log(`%c  ⚠️ Replaced ${fundamental.frequency.toFixed(2)}Hz with fundamental ${peak.frequency.toFixed(2)}Hz`,
-                        'color: #ffaa00; font-size: 10px;');
                     break;
                 }
 
@@ -666,8 +678,6 @@ class NoteVisualizer {
                 for (const musicalRatio of musicalRatios) {
                     if (Math.abs(ratio - musicalRatio) < harmonicTolerance) {
                         isHarmonic = true;
-                        console.log(`%c  ⚠️ Filtered overtone: ${peak.frequency.toFixed(2)}Hz (${musicalRatio}x of ${fundamental.frequency.toFixed(2)}Hz)`,
-                            'color: #ffaa00; font-size: 10px;');
                         break;
                     }
                 }
@@ -678,13 +688,8 @@ class NoteVisualizer {
                 fundamentals.push(peak);
             }
 
-            // Limit to top 3 fundamentals (ultra strict - reduced from 4)
+            // Limit to top 3 fundamentals
             if (fundamentals.length >= 3) break;
-        }
-
-        if (fundamentals.length > 0) {
-            console.log(`%c  ✓ Found ${fundamentals.length} fundamental(s) from ${peaks.length} peak(s)`,
-                'color: #00ffff; font-size: 10px;');
         }
 
         return fundamentals;
