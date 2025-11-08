@@ -49,7 +49,11 @@ class NoteVisualizer {
 
         // Note filtering (to remove noise/transients)
         this.noteBuffer = new Map(); // MIDI note -> {startTime, lastSeenTime, confirmed}
-        this.minNoteDuration = 0.08; // Minimum 80ms to be considered a real note
+        this.minNoteDuration = 0.12; // Minimum 120ms to be considered a real note (increased from 80ms)
+
+        // Aggressive noise filtering
+        this.minAmplitudeThreshold = 30; // Increased from 20 - filter quieter noise
+        this.minConfidenceForDisplay = 0.4; // Notes must appear in 40% of smoothing frames
 
         // Note frequencies (A4 = 440Hz standard)
         this.noteStrings = ["C", "C#", "D", "D#", "E", "F", "F#", "G", "G#", "A", "A#", "B"];
@@ -448,8 +452,8 @@ class NoteVisualizer {
 
         // Find all peaks
         const peaks = [];
-        const threshold = 20; // Minimum amplitude
-        const peakWindow = 5; // Look for local maxima within this window
+        const threshold = this.minAmplitudeThreshold; // Increased threshold for noise filtering
+        const peakWindow = 7; // Increased from 5 - more aggressive peak detection
 
         for (let i = minIndex + peakWindow; i < maxIndexBound - peakWindow; i++) {
             const value = this.dataArray[i];
@@ -491,7 +495,7 @@ class NoteVisualizer {
         // Sort by amplitude (loudest first)
         peaks.sort((a, b) => b.amplitude - a.amplitude);
 
-        // Filter out harmonics - keep only fundamentals
+        // Filter out harmonics - keep only fundamentals (AGGRESSIVE)
         const fundamentals = [];
         for (let i = 0; i < peaks.length; i++) {
             const peak = peaks[i];
@@ -505,21 +509,50 @@ class NoteVisualizer {
                 const ratio = peak.frequency / fundamental.frequency;
                 const nearestHarmonic = Math.round(ratio);
 
-                // If ratio is close to an integer (within 5%), it's likely a harmonic
-                if (nearestHarmonic >= 2 && Math.abs(ratio - nearestHarmonic) < 0.1) {
+                // AGGRESSIVE: Increased tolerance from 10% to 15% to catch more harmonics
+                // Also check sub-harmonics (1/2, 1/3, etc.)
+                const harmonicTolerance = 0.15;
+
+                // Check integer harmonics (2x, 3x, 4x, 5x)
+                if (nearestHarmonic >= 2 && nearestHarmonic <= 8 &&
+                    Math.abs(ratio - nearestHarmonic) < harmonicTolerance) {
                     isHarmonic = true;
                     console.log(`%c  ⚠️ Filtered harmonic: ${peak.frequency.toFixed(2)}Hz (${nearestHarmonic}x of ${fundamental.frequency.toFixed(2)}Hz)`,
                         'color: #ffaa00; font-size: 10px;');
                     break;
                 }
+
+                // Check sub-harmonics (0.5x, 0.33x, 0.25x) - fundamental might be the harmonic
+                const inverseRatio = fundamental.frequency / peak.frequency;
+                const nearestSubHarmonic = Math.round(inverseRatio);
+                if (nearestSubHarmonic >= 2 && nearestSubHarmonic <= 8 &&
+                    Math.abs(inverseRatio - nearestSubHarmonic) < harmonicTolerance) {
+                    // This peak is actually the fundamental, remove the existing one
+                    fundamentals.splice(j, 1);
+                    console.log(`%c  ⚠️ Replaced ${fundamental.frequency.toFixed(2)}Hz with fundamental ${peak.frequency.toFixed(2)}Hz`,
+                        'color: #ffaa00; font-size: 10px;');
+                    break;
+                }
+
+                // Check for overtone series (1.5x for perfect fifth, etc.)
+                const musicalRatios = [1.5, 2.5, 3.5]; // Common overtone ratios
+                for (const musicalRatio of musicalRatios) {
+                    if (Math.abs(ratio - musicalRatio) < harmonicTolerance) {
+                        isHarmonic = true;
+                        console.log(`%c  ⚠️ Filtered overtone: ${peak.frequency.toFixed(2)}Hz (${musicalRatio}x of ${fundamental.frequency.toFixed(2)}Hz)`,
+                            'color: #ffaa00; font-size: 10px;');
+                        break;
+                    }
+                }
+                if (isHarmonic) break;
             }
 
             if (!isHarmonic) {
                 fundamentals.push(peak);
             }
 
-            // Limit to top 5 fundamentals
-            if (fundamentals.length >= 5) break;
+            // Limit to top 4 fundamentals (reduced from 5 for cleaner detection)
+            if (fundamentals.length >= 4) break;
         }
 
         if (fundamentals.length > 0) {
@@ -555,12 +588,19 @@ class NoteVisualizer {
         frequencyMap.forEach((peaks, noteNum) => {
             const avgFreq = peaks.reduce((sum, p) => sum + p.frequency, 0) / peaks.length;
             const avgAmp = peaks.reduce((sum, p) => sum + p.amplitude, 0) / peaks.length;
+            const confidence = peaks.length / this.smoothingBufferSize;
 
-            smoothed.push({
-                frequency: avgFreq,
-                amplitude: avgAmp,
-                confidence: peaks.length / this.smoothingBufferSize
-            });
+            // Only include notes with sufficient confidence
+            if (confidence >= this.minConfidenceForDisplay) {
+                smoothed.push({
+                    frequency: avgFreq,
+                    amplitude: avgAmp,
+                    confidence: confidence
+                });
+            } else {
+                console.log(`%c  ✗ Low confidence note rejected: MIDI ${noteNum} (${(confidence * 100).toFixed(0)}% < ${(this.minConfidenceForDisplay * 100).toFixed(0)}%)`,
+                    'color: #ff6600; font-size: 10px;');
+            }
         });
 
         // Sort by amplitude
