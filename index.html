@@ -3,7 +3,7 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
-    <title>PITCH.ANALYZER v1.1.2</title>
+    <title>PITCH.ANALYZER v1.1.3</title>
     <link rel="icon" href="data:image/svg+xml,<svg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 100 100'><text y='80' font-size='80' fill='%2300ff41'>🎵</text></svg>">
     <style>
         * {
@@ -106,6 +106,151 @@
             padding: 12px;
             margin-bottom: 10px;
             box-shadow: 0 0 15px rgba(0, 255, 65, 0.3), inset 0 0 20px rgba(0, 255, 65, 0.05);
+        }
+
+        /* Settings Panel */
+        .settings-panel {
+            margin-bottom: 10px;
+            padding: 12px;
+        }
+
+        .preset-buttons {
+            display: flex;
+            gap: 8px;
+            margin-bottom: 15px;
+            flex-wrap: wrap;
+        }
+
+        .preset-btn {
+            flex: 1;
+            min-width: 100px;
+            background: transparent;
+            border: 1px solid var(--dim-green);
+            color: var(--dim-green);
+            padding: 8px 16px;
+            font-size: 0.75rem;
+            font-weight: 400;
+            font-family: 'Share Tech Mono', monospace;
+            cursor: pointer;
+            transition: all 0.3s ease;
+            text-transform: uppercase;
+            letter-spacing: 1px;
+        }
+
+        .preset-btn:hover {
+            background: rgba(0, 255, 65, 0.1);
+            border-color: var(--matrix-green);
+            color: var(--matrix-green);
+            box-shadow: 0 0 10px rgba(0, 255, 65, 0.4);
+        }
+
+        .preset-btn.active {
+            background: rgba(0, 255, 65, 0.2);
+            border-color: var(--cyan);
+            color: var(--cyan);
+            box-shadow: 0 0 15px rgba(0, 255, 255, 0.5);
+        }
+
+        .settings-grid {
+            display: grid;
+            grid-template-columns: 1fr 1fr;
+            gap: 15px;
+        }
+
+        @media (max-width: 767px) {
+            .settings-grid {
+                grid-template-columns: 1fr;
+                gap: 12px;
+            }
+        }
+
+        .setting-item {
+            display: flex;
+            flex-direction: column;
+            gap: 8px;
+        }
+
+        .setting-item label {
+            display: flex;
+            justify-content: space-between;
+            align-items: center;
+            font-size: 0.75rem;
+            color: var(--matrix-green);
+            font-family: 'Share Tech Mono', monospace;
+            text-transform: uppercase;
+            letter-spacing: 1px;
+        }
+
+        .setting-label {
+            color: var(--dim-green);
+        }
+
+        .setting-value {
+            color: var(--cyan);
+            font-weight: bold;
+            min-width: 50px;
+            text-align: right;
+        }
+
+        /* Slider Styling */
+        input[type="range"] {
+            -webkit-appearance: none;
+            appearance: none;
+            width: 100%;
+            height: 6px;
+            background: rgba(0, 0, 0, 0.8);
+            border: 1px solid var(--dim-green);
+            outline: none;
+            cursor: pointer;
+            transition: all 0.3s ease;
+        }
+
+        input[type="range"]:hover {
+            border-color: var(--matrix-green);
+            box-shadow: 0 0 10px rgba(0, 255, 65, 0.3);
+        }
+
+        /* Chrome/Safari slider thumb */
+        input[type="range"]::-webkit-slider-thumb {
+            -webkit-appearance: none;
+            appearance: none;
+            width: 16px;
+            height: 16px;
+            background: var(--matrix-green);
+            border: 2px solid var(--cyan);
+            cursor: pointer;
+            transition: all 0.2s ease;
+            box-shadow: 0 0 10px rgba(0, 255, 65, 0.8);
+        }
+
+        input[type="range"]::-webkit-slider-thumb:hover {
+            background: var(--cyan);
+            box-shadow: 0 0 20px rgba(0, 255, 255, 0.9);
+            transform: scale(1.1);
+        }
+
+        /* Firefox slider thumb */
+        input[type="range"]::-moz-range-thumb {
+            width: 16px;
+            height: 16px;
+            background: var(--matrix-green);
+            border: 2px solid var(--cyan);
+            cursor: pointer;
+            transition: all 0.2s ease;
+            box-shadow: 0 0 10px rgba(0, 255, 65, 0.8);
+        }
+
+        input[type="range"]::-moz-range-thumb:hover {
+            background: var(--cyan);
+            box-shadow: 0 0 20px rgba(0, 255, 255, 0.9);
+            transform: scale(1.1);
+        }
+
+        /* Firefox slider track */
+        input[type="range"]::-moz-range-track {
+            background: rgba(0, 0, 0, 0.8);
+            border: 1px solid var(--dim-green);
+            height: 6px;
         }
 
         .button-group {
@@ -979,7 +1124,7 @@
         <header>
             <h1>PITCH.ANALYZER</h1>
             <p class="subtitle">MULTI-FREQ | HARMONIC FILTER | <span id="latency">0ms</span> LAT</p>
-            <span class="version">v1.1.1</span>
+            <span class="version">v1.1.3</span>
         </header>
 
         <div class="control-panel">
@@ -987,6 +1132,50 @@
                 <button id="startBtn">Start Listening</button>
             </div>
             <div id="message" class="message"></div>
+        </div>
+
+        <div class="settings-panel note-card">
+            <div class="card-title">Detection Settings</div>
+
+            <div class="preset-buttons">
+                <button class="preset-btn" data-preset="sensitive">Sensitive</button>
+                <button class="preset-btn active" data-preset="balanced">Balanced</button>
+                <button class="preset-btn" data-preset="aggressive">Aggressive</button>
+            </div>
+
+            <div class="settings-grid">
+                <div class="setting-item">
+                    <label for="amplitudeSlider">
+                        <span class="setting-label">Amplitude</span>
+                        <span class="setting-value" id="amplitudeValue">30</span>
+                    </label>
+                    <input type="range" id="amplitudeSlider" min="10" max="100" value="30" step="5">
+                </div>
+
+                <div class="setting-item">
+                    <label for="confidenceSlider">
+                        <span class="setting-label">Confidence</span>
+                        <span class="setting-value" id="confidenceValue">50%</span>
+                    </label>
+                    <input type="range" id="confidenceSlider" min="0" max="100" value="50" step="5">
+                </div>
+
+                <div class="setting-item">
+                    <label for="durationSlider">
+                        <span class="setting-label">Min Duration</span>
+                        <span class="setting-value" id="durationValue">100ms</span>
+                    </label>
+                    <input type="range" id="durationSlider" min="50" max="300" value="100" step="10">
+                </div>
+
+                <div class="setting-item">
+                    <label for="smoothingSlider">
+                        <span class="setting-label">Smoothing</span>
+                        <span class="setting-value" id="smoothingValue">5</span>
+                    </label>
+                    <input type="range" id="smoothingSlider" min="3" max="12" value="5" step="1">
+                </div>
+            </div>
         </div>
 
         <div class="display-grid">

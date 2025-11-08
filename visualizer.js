@@ -49,11 +49,11 @@ class NoteVisualizer {
 
         // Note filtering (to remove noise/transients)
         this.noteBuffer = new Map(); // MIDI note -> {startTime, lastSeenTime, confirmed}
-        this.minNoteDuration = 0.15; // Minimum 150ms to be considered a real note (VERY aggressive)
+        this.minNoteDuration = 0.1; // Minimum duration in seconds (default: balanced)
 
-        // ULTRA AGGRESSIVE noise filtering
-        this.minAmplitudeThreshold = 50; // Massively increased - only loud clear notes
-        this.minConfidenceForDisplay = 0.6; // Notes must appear in 60% of smoothing frames (3/5)
+        // Noise filtering parameters (adjustable via UI)
+        this.minAmplitudeThreshold = 30; // Amplitude threshold (default: balanced)
+        this.minConfidenceForDisplay = 0.5; // Confidence threshold (default: balanced)
 
         // Note frequencies (A4 = 440Hz standard)
         this.noteStrings = ["C", "C#", "D", "D#", "E", "F", "F#", "G", "G#", "A", "A#", "B"];
@@ -64,7 +64,7 @@ class NoteVisualizer {
 
         // Temporal smoothing for stability
         this.smoothingBuffer = [];
-        this.smoothingBufferSize = 8; // Increased from 5 - more smoothing for stability
+        this.smoothingBufferSize = 5; // Adjustable via UI (default: balanced)
         this.lastProcessTime = 0;
         this.processingLatency = 0;
 
@@ -74,12 +74,16 @@ class NoteVisualizer {
         this.currentOctave = 4;
         this.currentlyPlayingBtn = null;
 
+        // Console logging optimization
+        this.lastLoggedNotes = null;
+        this.lastLoggedChord = null;
+
         this.setupEventListeners();
         this.generateNoteButtons();
 
         // Console banner
-        console.log('%c🎵 PITCH.ANALYZER v1.1.1 [ULTRA CLEAN MODE]', 'color: #00ff41; font-size: 20px; font-weight: bold; text-shadow: 0 0 10px #00ff41;');
-        console.log('%cMulti-frequency detection • Harmonic filtering • Real-time analysis', 'color: #00ffff; font-size: 12px;');
+        console.log('%c🎵 PITCH.ANALYZER v1.1.3 [ADAPTIVE MODE]', 'color: #00ff41; font-size: 20px; font-weight: bold; text-shadow: 0 0 10px #00ff41;');
+        console.log('%cMulti-frequency • Harmonic filtering • Adjustable sensitivity', 'color: #00ffff; font-size: 12px;');
         console.log('%c━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━', 'color: #00ff41;');
     }
 
@@ -95,6 +99,126 @@ class NoteVisualizer {
                 this.generateNoteButtons();
             });
         });
+
+        // Detection settings sliders
+        const amplitudeSlider = document.getElementById('amplitudeSlider');
+        const confidenceSlider = document.getElementById('confidenceSlider');
+        const durationSlider = document.getElementById('durationSlider');
+        const smoothingSlider = document.getElementById('smoothingSlider');
+
+        const amplitudeValue = document.getElementById('amplitudeValue');
+        const confidenceValue = document.getElementById('confidenceValue');
+        const durationValue = document.getElementById('durationValue');
+        const smoothingValue = document.getElementById('smoothingValue');
+
+        if (amplitudeSlider) {
+            amplitudeSlider.addEventListener('input', (e) => {
+                const value = parseInt(e.target.value);
+                this.minAmplitudeThreshold = value;
+                amplitudeValue.textContent = value;
+                console.log(`Amplitude threshold: ${value}`);
+            });
+        }
+
+        if (confidenceSlider) {
+            confidenceSlider.addEventListener('input', (e) => {
+                const value = parseInt(e.target.value);
+                this.minConfidenceForDisplay = value / 100; // Convert to 0-1 range
+                confidenceValue.textContent = `${value}%`;
+                console.log(`Confidence threshold: ${value}%`);
+            });
+        }
+
+        if (durationSlider) {
+            durationSlider.addEventListener('input', (e) => {
+                const value = parseInt(e.target.value);
+                this.minNoteDuration = value / 1000; // Convert ms to seconds
+                durationValue.textContent = `${value}ms`;
+                console.log(`Min duration: ${value}ms`);
+            });
+        }
+
+        if (smoothingSlider) {
+            smoothingSlider.addEventListener('input', (e) => {
+                const value = parseInt(e.target.value);
+                this.smoothingBufferSize = value;
+                smoothingValue.textContent = value;
+                // Clear and resize smoothing buffer
+                this.smoothingBuffer = [];
+                console.log(`Smoothing buffer: ${value} frames`);
+            });
+        }
+
+        // Preset buttons
+        document.querySelectorAll('.preset-btn').forEach(btn => {
+            btn.addEventListener('click', (e) => {
+                document.querySelectorAll('.preset-btn').forEach(b => b.classList.remove('active'));
+                e.target.classList.add('active');
+                this.applyPreset(e.target.dataset.preset);
+            });
+        });
+    }
+
+    applyPreset(preset) {
+        const presets = {
+            sensitive: {
+                amplitude: 15,
+                confidence: 30,
+                duration: 50,
+                smoothing: 3
+            },
+            balanced: {
+                amplitude: 30,
+                confidence: 50,
+                duration: 100,
+                smoothing: 5
+            },
+            aggressive: {
+                amplitude: 50,
+                confidence: 70,
+                duration: 150,
+                smoothing: 8
+            }
+        };
+
+        const settings = presets[preset];
+        if (!settings) return;
+
+        // Update parameters
+        this.minAmplitudeThreshold = settings.amplitude;
+        this.minConfidenceForDisplay = settings.confidence / 100;
+        this.minNoteDuration = settings.duration / 1000;
+        this.smoothingBufferSize = settings.smoothing;
+        this.smoothingBuffer = [];
+
+        // Update UI sliders and values
+        const amplitudeSlider = document.getElementById('amplitudeSlider');
+        const confidenceSlider = document.getElementById('confidenceSlider');
+        const durationSlider = document.getElementById('durationSlider');
+        const smoothingSlider = document.getElementById('smoothingSlider');
+
+        const amplitudeValue = document.getElementById('amplitudeValue');
+        const confidenceValue = document.getElementById('confidenceValue');
+        const durationValue = document.getElementById('durationValue');
+        const smoothingValue = document.getElementById('smoothingValue');
+
+        if (amplitudeSlider) amplitudeSlider.value = settings.amplitude;
+        if (confidenceSlider) confidenceSlider.value = settings.confidence;
+        if (durationSlider) durationSlider.value = settings.duration;
+        if (smoothingSlider) smoothingSlider.value = settings.smoothing;
+
+        if (amplitudeValue) amplitudeValue.textContent = settings.amplitude;
+        if (confidenceValue) confidenceValue.textContent = `${settings.confidence}%`;
+        if (durationValue) durationValue.textContent = `${settings.duration}ms`;
+        if (smoothingValue) smoothingValue.textContent = settings.smoothing;
+
+        console.log(`%cPreset applied: ${preset.toUpperCase()}`, 'color: #00ffff; font-weight: bold;');
+        console.log(`  Amplitude: ${settings.amplitude}`);
+        console.log(`  Confidence: ${settings.confidence}%`);
+        console.log(`  Duration: ${settings.duration}ms`);
+        console.log(`  Smoothing: ${settings.smoothing} frames`);
+
+        this.showMessage(`Preset applied: ${preset.toUpperCase()}`, 'success');
     }
 
     generateNoteButtons() {
@@ -332,15 +456,18 @@ class NoteVisualizer {
                 });
             }
 
-            // Console logging for debugging (show confirmed notes)
+            // Simplified console logging (only show when notes change)
             if (confirmedNotes.length > 0) {
                 const confirmedNames = confirmedNotes.map(n => n.name).join(' ');
-                console.log(`%c🎵 ${confirmedNames}`, 'color: #00ff41; font-weight: bold;',
-                    `| ${confirmedNotes.map(n => n.frequency.toFixed(2) + 'Hz').join(', ')}`,
-                    `| Cents: ${confirmedNotes[0].cents > 0 ? '+' : ''}${confirmedNotes[0].cents}`,
-                    `| Vol: ${Math.round(volumePercent)}%`,
-                    `| Latency: ${this.processingLatency.toFixed(1)}ms`
-                );
+                // Only log if notes changed
+                if (this.lastLoggedNotes !== confirmedNames) {
+                    console.log(`%c🎵 ${confirmedNames}`, 'color: #00ff41; font-weight: bold;',
+                        `${confirmedNotes.map(n => n.frequency.toFixed(1) + 'Hz').join(', ')}`);
+                    this.lastLoggedNotes = confirmedNames;
+                }
+            } else if (this.lastLoggedNotes) {
+                // Clear last logged notes when detection stops
+                this.lastLoggedNotes = null;
             }
 
             // Update pitch deviation based on loudest confirmed note
@@ -597,10 +724,8 @@ class NoteVisualizer {
                     amplitude: avgAmp,
                     confidence: confidence
                 });
-            } else {
-                console.log(`%c  ✗ Low confidence note rejected: MIDI ${noteNum} (${(confidence * 100).toFixed(0)}% < ${(this.minConfidenceForDisplay * 100).toFixed(0)}%)`,
-                    'color: #ff6600; font-size: 10px;');
             }
+            // Removed verbose low confidence logs
         });
 
         // Sort by amplitude
@@ -891,8 +1016,12 @@ class NoteVisualizer {
                 // Update chord list UI
                 this.updateChordList();
 
-                console.log(`%c🎸 Chord: ${chordName}`, 'color: #00ffff; font-weight: bold; font-size: 14px;',
-                    `| Notes: ${sortedNotes.map(n => n.name).join(' ')}`);
+                // Only log if chord changed
+                if (this.lastLoggedChord !== chordName) {
+                    console.log(`%c🎸 ${chordName}`, 'color: #00ffff; font-weight: bold;',
+                        `${sortedNotes.map(n => n.name).join(' ')}`);
+                    this.lastLoggedChord = chordName;
+                }
             }
         }
     }
@@ -1019,8 +1148,7 @@ class NoteVisualizer {
                 // Confirm note if it's been playing long enough
                 if (duration >= this.minNoteDuration && !buffer.confirmed) {
                     buffer.confirmed = true;
-                    console.log(`%c  ✓ Note confirmed: ${note.name} (${(duration * 1000).toFixed(0)}ms)`,
-                        'color: #00ffff; font-size: 10px;');
+                    // Removed verbose confirmation log for cleaner console
                 }
 
                 // Add to confirmed list if validated
