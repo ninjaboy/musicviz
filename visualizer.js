@@ -70,7 +70,7 @@ class NoteVisualizer {
         this.generateNoteButtons();
 
         // Console banner
-        console.log('%c🎵 PITCH.ANALYZER v1.0.4', 'color: #00ff41; font-size: 20px; font-weight: bold; text-shadow: 0 0 10px #00ff41;');
+        console.log('%c🎵 PITCH.ANALYZER v1.1.0', 'color: #00ff41; font-size: 20px; font-weight: bold; text-shadow: 0 0 10px #00ff41;');
         console.log('%cMulti-frequency detection • Harmonic filtering • Real-time analysis', 'color: #00ffff; font-size: 12px;');
         console.log('%c━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━', 'color: #00ff41;');
     }
