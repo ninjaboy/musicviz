@@ -44,13 +44,47 @@ class NoteVisualizer {
         this.currentCents = 0;
         this.targetFrequency = 0;
 
+        // Reference tone playback
+        this.referenceOscillator = null;
+        this.referenceGain = null;
+        this.currentOctave = 4;
+        this.currentlyPlayingBtn = null;
+
         this.setupEventListeners();
+        this.generateNoteButtons();
     }
 
     setupEventListeners() {
         this.startBtn.addEventListener('click', () => this.toggleMicrophone());
         this.recordBtn.addEventListener('click', () => this.toggleRecording());
         this.playbackBtn.addEventListener('click', () => this.playRecording());
+
+        // Octave selector
+        document.querySelectorAll('.octave-btn').forEach(btn => {
+            btn.addEventListener('click', (e) => {
+                document.querySelectorAll('.octave-btn').forEach(b => b.classList.remove('active'));
+                e.target.classList.add('active');
+                this.currentOctave = parseInt(e.target.dataset.octave);
+                this.generateNoteButtons();
+            });
+        });
+    }
+
+    generateNoteButtons() {
+        const container = document.getElementById('noteButtons');
+        container.innerHTML = '';
+
+        this.noteStrings.forEach((note, index) => {
+            const btn = document.createElement('button');
+            btn.className = 'note-btn';
+            btn.textContent = note;
+            btn.dataset.note = note;
+            btn.dataset.midiNote = (this.currentOctave + 1) * 12 + index;
+
+            btn.addEventListener('click', () => this.playReferenceNote(btn));
+
+            container.appendChild(btn);
+        });
     }
 
     showMessage(text, type = 'success') {
@@ -263,6 +297,80 @@ class NoteVisualizer {
         this.recordingStatus.textContent = 'Ready to play!';
     }
 
+    playReferenceNote(btn) {
+        // Stop any currently playing reference note
+        this.stopReferenceNote();
+
+        // Create audio context if needed
+        if (!this.audioContext || this.audioContext.state === 'closed') {
+            this.audioContext = new (window.AudioContext || window.webkitAudioContext)();
+        }
+
+        // Get MIDI note number and calculate frequency
+        const midiNote = parseInt(btn.dataset.midiNote);
+        const frequency = 440 * Math.pow(2, (midiNote - 69) / 12);
+
+        // Create oscillator for the tone
+        this.referenceOscillator = this.audioContext.createOscillator();
+        this.referenceGain = this.audioContext.createGain();
+
+        // Set up the tone
+        this.referenceOscillator.type = 'sine'; // Pure sine wave for reference
+        this.referenceOscillator.frequency.setValueAtTime(frequency, this.audioContext.currentTime);
+
+        // Set up volume with fade in/out
+        this.referenceGain.gain.setValueAtTime(0, this.audioContext.currentTime);
+        this.referenceGain.gain.linearRampToValueAtTime(0.3, this.audioContext.currentTime + 0.05); // Fade in
+        this.referenceGain.gain.linearRampToValueAtTime(0.3, this.audioContext.currentTime + 1.95); // Sustain
+        this.referenceGain.gain.linearRampToValueAtTime(0, this.audioContext.currentTime + 2); // Fade out
+
+        // Connect nodes
+        this.referenceOscillator.connect(this.referenceGain);
+        this.referenceGain.connect(this.audioContext.destination);
+
+        // Play the tone
+        this.referenceOscillator.start(this.audioContext.currentTime);
+        this.referenceOscillator.stop(this.audioContext.currentTime + 2);
+
+        // Update UI
+        btn.classList.add('playing');
+        this.currentlyPlayingBtn = btn;
+
+        // Clean up after tone finishes
+        this.referenceOscillator.onended = () => {
+            if (this.currentlyPlayingBtn) {
+                this.currentlyPlayingBtn.classList.remove('playing');
+                this.currentlyPlayingBtn = null;
+            }
+            this.referenceOscillator = null;
+            this.referenceGain = null;
+        };
+
+        // Show feedback
+        const noteName = btn.dataset.note + this.currentOctave;
+        this.showMessage(`Playing reference note: ${noteName} (${frequency.toFixed(2)} Hz)`, 'success');
+    }
+
+    stopReferenceNote() {
+        if (this.referenceOscillator) {
+            try {
+                this.referenceOscillator.stop();
+            } catch (e) {
+                // Already stopped
+            }
+            this.referenceOscillator = null;
+        }
+
+        if (this.referenceGain) {
+            this.referenceGain = null;
+        }
+
+        if (this.currentlyPlayingBtn) {
+            this.currentlyPlayingBtn.classList.remove('playing');
+            this.currentlyPlayingBtn = null;
+        }
+    }
+
     analyze() {
         if (!this.isRunning) return;
 
@@ -314,15 +422,15 @@ class NoteVisualizer {
         const position = 50 + cents; // 0-100 range
         this.pitchIndicator.style.left = `${position}%`;
 
-        // Update hint text and color
+        // Update hint text and color with cyberpunk style
         if (Math.abs(cents) < 5) {
-            this.pitchHint.innerHTML = '<span class="perfect">Perfect! 🎯</span>';
+            this.pitchHint.innerHTML = '<span class="perfect">[ LOCKED ] PITCH PERFECT</span>';
         } else if (cents > 5) {
-            const arrow = cents > 20 ? '⬇️⬇️' : '⬇️';
-            this.pitchHint.innerHTML = `<span class="arrow down">${arrow}</span> <span style="color: var(--warning)">Too Sharp - Go Lower</span>`;
+            const arrow = cents > 20 ? '⬇⬇' : '⬇';
+            this.pitchHint.innerHTML = `<span class="arrow down">${arrow}</span> <span style="color: #ffaa00">TOO SHARP &gt;&gt; LOWER</span>`;
         } else {
-            const arrow = cents < -20 ? '⬆️⬆️' : '⬆️';
-            this.pitchHint.innerHTML = `<span class="arrow up">${arrow}</span> <span style="color: var(--warning)">Too Flat - Go Higher</span>`;
+            const arrow = cents < -20 ? '⬆⬆' : '⬆';
+            this.pitchHint.innerHTML = `<span class="arrow up">${arrow}</span> <span style="color: #ffaa00">TOO FLAT &gt;&gt; HIGHER</span>`;
         }
     }
 
@@ -413,37 +521,50 @@ class NoteVisualizer {
         const width = this.canvas.width;
         const height = this.canvas.height;
 
-        // Clear canvas with fade effect
-        this.canvasCtx.fillStyle = 'rgba(0, 0, 0, 0.15)';
+        // Clear canvas with darker fade for matrix effect
+        this.canvasCtx.fillStyle = 'rgba(0, 0, 0, 0.3)';
         this.canvasCtx.fillRect(0, 0, width, height);
 
         // Get frequency data
         this.analyser.getByteFrequencyData(this.dataArray);
 
-        // Draw frequency spectrum with modern gradient bars
+        // Draw frequency spectrum with matrix-style green bars
         const barCount = 128;
         const barWidth = width / barCount;
         const step = Math.floor(this.bufferLength / barCount);
 
         for (let i = 0; i < barCount; i++) {
-            const barHeight = (this.dataArray[i * step] / 255) * height * 0.9;
+            const barHeight = (this.dataArray[i * step] / 255) * height * 0.85;
             const x = i * barWidth;
 
-            // Create dynamic gradient based on frequency
-            const hue = (i / barCount) * 360;
+            // Matrix green gradient with intensity based on amplitude
+            const intensity = this.dataArray[i * step] / 255;
             const gradient = this.canvasCtx.createLinearGradient(0, height - barHeight, 0, height);
-            gradient.addColorStop(0, `hsla(${hue}, 80%, 60%, 0.8)`);
-            gradient.addColorStop(1, `hsla(${hue}, 80%, 40%, 0.9)`);
+
+            // Cyberpunk green/cyan gradient
+            gradient.addColorStop(0, `rgba(0, 255, 255, ${intensity * 0.9})`); // Cyan top
+            gradient.addColorStop(0.5, `rgba(0, 255, 65, ${intensity * 0.8})`); // Matrix green
+            gradient.addColorStop(1, `rgba(0, 170, 46, ${intensity * 0.7})`); // Dim green
 
             this.canvasCtx.fillStyle = gradient;
-            this.canvasCtx.fillRect(x, height - barHeight, barWidth - 2, barHeight);
+            this.canvasCtx.fillRect(x, height - barHeight, barWidth - 1, barHeight);
+
+            // Add glow effect on peaks
+            if (barHeight > height * 0.6) {
+                this.canvasCtx.shadowColor = 'rgba(0, 255, 65, 0.8)';
+                this.canvasCtx.shadowBlur = 10;
+                this.canvasCtx.fillRect(x, height - barHeight, barWidth - 1, 3);
+                this.canvasCtx.shadowBlur = 0;
+            }
         }
 
-        // Draw waveform overlay
+        // Draw waveform overlay with matrix green
         this.analyser.getByteTimeDomainData(this.dataArray);
 
-        this.canvasCtx.lineWidth = 3;
-        this.canvasCtx.strokeStyle = 'rgba(255, 255, 255, 0.6)';
+        this.canvasCtx.lineWidth = 2;
+        this.canvasCtx.strokeStyle = 'rgba(0, 255, 255, 0.5)'; // Cyan waveform
+        this.canvasCtx.shadowColor = 'rgba(0, 255, 255, 0.5)';
+        this.canvasCtx.shadowBlur = 5;
         this.canvasCtx.beginPath();
 
         const sliceWidth = width / this.bufferLength;
@@ -463,6 +584,7 @@ class NoteVisualizer {
         }
 
         this.canvasCtx.stroke();
+        this.canvasCtx.shadowBlur = 0;
     }
 }
 
