@@ -1,0 +1,480 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
+    <title>Pitch Perfect - Note Visualizer</title>
+    <style>
+        * {
+            margin: 0;
+            padding: 0;
+            box-sizing: border-box;
+        }
+
+        :root {
+            --primary: #6366f1;
+            --primary-dark: #4f46e5;
+            --secondary: #8b5cf6;
+            --accent: #ec4899;
+            --success: #10b981;
+            --warning: #f59e0b;
+            --danger: #ef4444;
+            --bg-dark: #0f172a;
+            --bg-card: rgba(255, 255, 255, 0.1);
+            --glass: rgba(255, 255, 255, 0.05);
+        }
+
+        body {
+            font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, Oxygen, Ubuntu, sans-serif;
+            background: linear-gradient(135deg, #667eea 0%, #764ba2 50%, #f093fb 100%);
+            background-attachment: fixed;
+            min-height: 100vh;
+            color: white;
+            padding: 10px;
+            overflow-x: hidden;
+        }
+
+        .container {
+            max-width: 1200px;
+            margin: 0 auto;
+            padding: 20px;
+        }
+
+        header {
+            text-align: center;
+            margin-bottom: 30px;
+        }
+
+        h1 {
+            font-size: clamp(1.8rem, 5vw, 3rem);
+            font-weight: 800;
+            background: linear-gradient(135deg, #fff 0%, #e0e7ff 100%);
+            -webkit-background-clip: text;
+            -webkit-text-fill-color: transparent;
+            background-clip: text;
+            margin-bottom: 10px;
+        }
+
+        .subtitle {
+            font-size: clamp(0.9rem, 2vw, 1.1rem);
+            opacity: 0.9;
+            font-weight: 300;
+        }
+
+        /* Control Panel */
+        .control-panel {
+            background: var(--glass);
+            backdrop-filter: blur(20px);
+            border-radius: 20px;
+            padding: 20px;
+            margin-bottom: 20px;
+            border: 1px solid rgba(255, 255, 255, 0.2);
+            box-shadow: 0 8px 32px rgba(0, 0, 0, 0.3);
+        }
+
+        .button-group {
+            display: flex;
+            gap: 10px;
+            flex-wrap: wrap;
+            justify-content: center;
+        }
+
+        button {
+            background: linear-gradient(135deg, var(--primary) 0%, var(--secondary) 100%);
+            border: none;
+            color: white;
+            padding: 14px 28px;
+            font-size: clamp(0.9rem, 2vw, 1rem);
+            font-weight: 600;
+            border-radius: 50px;
+            cursor: pointer;
+            transition: all 0.3s ease;
+            box-shadow: 0 4px 15px rgba(0, 0, 0, 0.2);
+            position: relative;
+            overflow: hidden;
+        }
+
+        button:hover {
+            transform: translateY(-2px);
+            box-shadow: 0 6px 20px rgba(0, 0, 0, 0.3);
+        }
+
+        button:active {
+            transform: translateY(0);
+        }
+
+        button.active {
+            background: linear-gradient(135deg, var(--success) 0%, #059669 100%);
+            animation: pulse 2s infinite;
+        }
+
+        button.recording {
+            background: linear-gradient(135deg, var(--danger) 0%, #dc2626 100%);
+            animation: pulse 1s infinite;
+        }
+
+        @keyframes pulse {
+            0%, 100% { opacity: 1; }
+            50% { opacity: 0.8; }
+        }
+
+        button:disabled {
+            opacity: 0.5;
+            cursor: not-allowed;
+            transform: none;
+        }
+
+        /* Main Display Grid */
+        .display-grid {
+            display: grid;
+            grid-template-columns: 1fr;
+            gap: 20px;
+            margin-bottom: 20px;
+        }
+
+        @media (min-width: 768px) {
+            .display-grid {
+                grid-template-columns: 1fr 1fr;
+            }
+        }
+
+        /* Note Display Card */
+        .note-card {
+            background: var(--glass);
+            backdrop-filter: blur(20px);
+            border-radius: 20px;
+            padding: 30px;
+            border: 1px solid rgba(255, 255, 255, 0.2);
+            box-shadow: 0 8px 32px rgba(0, 0, 0, 0.3);
+            position: relative;
+            overflow: hidden;
+        }
+
+        .card-title {
+            font-size: 0.9rem;
+            font-weight: 600;
+            opacity: 0.7;
+            margin-bottom: 15px;
+            text-transform: uppercase;
+            letter-spacing: 1px;
+        }
+
+        .detected-note {
+            font-size: clamp(3rem, 12vw, 6rem);
+            font-weight: 800;
+            margin: 20px 0;
+            text-shadow: 0 4px 20px rgba(0, 0, 0, 0.3);
+            transition: all 0.1s ease;
+            line-height: 1;
+        }
+
+        .frequency {
+            font-size: clamp(1rem, 3vw, 1.3rem);
+            opacity: 0.8;
+            margin-bottom: 10px;
+        }
+
+        /* Pitch Deviation Meter */
+        .pitch-deviation {
+            margin-top: 20px;
+        }
+
+        .pitch-meter {
+            position: relative;
+            height: 60px;
+            background: rgba(0, 0, 0, 0.2);
+            border-radius: 30px;
+            overflow: hidden;
+            margin: 15px 0;
+        }
+
+        .pitch-center-line {
+            position: absolute;
+            left: 50%;
+            top: 0;
+            width: 3px;
+            height: 100%;
+            background: white;
+            transform: translateX(-50%);
+            z-index: 2;
+        }
+
+        .pitch-indicator {
+            position: absolute;
+            width: 30px;
+            height: 30px;
+            background: white;
+            border-radius: 50%;
+            top: 50%;
+            left: 50%;
+            transform: translate(-50%, -50%);
+            transition: all 0.2s ease;
+            box-shadow: 0 0 20px rgba(255, 255, 255, 0.5);
+            z-index: 3;
+        }
+
+        .pitch-gradient {
+            position: absolute;
+            width: 100%;
+            height: 100%;
+            background: linear-gradient(90deg,
+                var(--danger) 0%,
+                var(--warning) 25%,
+                var(--success) 50%,
+                var(--warning) 75%,
+                var(--danger) 100%);
+            opacity: 0.6;
+        }
+
+        .pitch-labels {
+            display: flex;
+            justify-content: space-between;
+            font-size: 0.8rem;
+            opacity: 0.7;
+        }
+
+        .pitch-hint {
+            font-size: 1.2rem;
+            font-weight: 600;
+            margin-top: 10px;
+            min-height: 30px;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            gap: 10px;
+        }
+
+        .arrow {
+            font-size: 1.5rem;
+            animation: bounce 1s infinite;
+        }
+
+        .arrow.up {
+            animation: bounceUp 1s infinite;
+        }
+
+        .arrow.down {
+            animation: bounceDown 1s infinite;
+        }
+
+        @keyframes bounceUp {
+            0%, 100% { transform: translateY(0); }
+            50% { transform: translateY(-5px); }
+        }
+
+        @keyframes bounceDown {
+            0%, 100% { transform: translateY(0); }
+            50% { transform: translateY(5px); }
+        }
+
+        .perfect {
+            color: var(--success);
+            animation: glow 1s infinite;
+        }
+
+        @keyframes glow {
+            0%, 100% { opacity: 1; }
+            50% { opacity: 0.7; }
+        }
+
+        /* Volume Meter */
+        .volume-card {
+            background: var(--glass);
+            backdrop-filter: blur(20px);
+            border-radius: 20px;
+            padding: 30px;
+            border: 1px solid rgba(255, 255, 255, 0.2);
+            box-shadow: 0 8px 32px rgba(0, 0, 0, 0.3);
+        }
+
+        .volume-bar {
+            width: 100%;
+            height: 20px;
+            background: rgba(0, 0, 0, 0.2);
+            border-radius: 10px;
+            overflow: hidden;
+            margin-top: 10px;
+        }
+
+        .volume-fill {
+            height: 100%;
+            background: linear-gradient(90deg, var(--success), var(--warning), var(--danger));
+            width: 0%;
+            transition: width 0.1s ease;
+            border-radius: 10px;
+        }
+
+        /* Visualizer */
+        .visualizer-card {
+            background: var(--glass);
+            backdrop-filter: blur(20px);
+            border-radius: 20px;
+            padding: 20px;
+            border: 1px solid rgba(255, 255, 255, 0.2);
+            box-shadow: 0 8px 32px rgba(0, 0, 0, 0.3);
+            margin-bottom: 20px;
+        }
+
+        canvas {
+            border-radius: 10px;
+            background: rgba(0, 0, 0, 0.1);
+            display: block;
+            width: 100%;
+            height: auto;
+            max-width: 100%;
+        }
+
+        /* Recording Controls */
+        .recording-info {
+            text-align: center;
+            margin-top: 10px;
+            font-size: 0.9rem;
+            opacity: 0.8;
+        }
+
+        .timer {
+            font-weight: 600;
+            color: var(--danger);
+        }
+
+        /* Mobile Optimizations */
+        @media (max-width: 767px) {
+            .container {
+                padding: 10px;
+            }
+
+            .control-panel, .note-card, .volume-card, .visualizer-card {
+                padding: 20px 15px;
+            }
+
+            .button-group {
+                flex-direction: column;
+            }
+
+            button {
+                width: 100%;
+            }
+
+            .detected-note {
+                margin: 10px 0;
+            }
+
+            .pitch-meter {
+                height: 50px;
+            }
+
+            canvas {
+                height: 200px;
+            }
+        }
+
+        /* Success/Error Messages */
+        .message {
+            text-align: center;
+            padding: 15px;
+            border-radius: 10px;
+            margin: 10px 0;
+            font-weight: 500;
+            display: none;
+        }
+
+        .message.success {
+            background: rgba(16, 185, 129, 0.2);
+            border: 1px solid var(--success);
+        }
+
+        .message.error {
+            background: rgba(239, 68, 68, 0.2);
+            border: 1px solid var(--danger);
+        }
+
+        .message.show {
+            display: block;
+            animation: slideIn 0.3s ease;
+        }
+
+        @keyframes slideIn {
+            from {
+                opacity: 0;
+                transform: translateY(-10px);
+            }
+            to {
+                opacity: 1;
+                transform: translateY(0);
+            }
+        }
+
+        /* Info Section */
+        .info-section {
+            text-align: center;
+            margin-top: 20px;
+            opacity: 0.7;
+            font-size: 0.85rem;
+        }
+    </style>
+</head>
+<body>
+    <div class="container">
+        <header>
+            <h1>Pitch Perfect</h1>
+            <p class="subtitle">Real-time note detection with pitch correction</p>
+        </header>
+
+        <div class="control-panel">
+            <div class="button-group">
+                <button id="startBtn">Start Listening</button>
+                <button id="recordBtn" disabled>Record & Autotune</button>
+                <button id="playbackBtn" disabled>Play Recording</button>
+            </div>
+            <div class="recording-info">
+                <span id="recordingStatus"></span>
+            </div>
+            <div id="message" class="message"></div>
+        </div>
+
+        <div class="display-grid">
+            <div class="note-card">
+                <div class="card-title">Detected Note</div>
+                <div class="detected-note" id="noteName">--</div>
+                <div class="frequency" id="frequency">Frequency: -- Hz</div>
+
+                <div class="pitch-deviation">
+                    <div class="card-title">Pitch Accuracy</div>
+                    <div class="pitch-meter">
+                        <div class="pitch-gradient"></div>
+                        <div class="pitch-center-line"></div>
+                        <div class="pitch-indicator" id="pitchIndicator"></div>
+                    </div>
+                    <div class="pitch-labels">
+                        <span>-50¢</span>
+                        <span>Perfect</span>
+                        <span>+50¢</span>
+                    </div>
+                    <div class="pitch-hint" id="pitchHint"></div>
+                </div>
+            </div>
+
+            <div class="volume-card">
+                <div class="card-title">Input Level</div>
+                <div class="volume-bar">
+                    <div class="volume-fill" id="volumeFill"></div>
+                </div>
+                <div class="recording-info" style="margin-top: 15px;">
+                    <div id="volumePercent">0%</div>
+                </div>
+            </div>
+        </div>
+
+        <div class="visualizer-card">
+            <div class="card-title">Frequency Spectrum</div>
+            <canvas id="visualizer" width="1000" height="300"></canvas>
+        </div>
+
+        <div class="info-section">
+            Click "Start Listening" to begin • Use "Record & Autotune" to correct your pitch
+        </div>
+    </div>
+
+    <script src="visualizer.js"></script>
+</body>
+</html>
