@@ -83,8 +83,8 @@ class NoteVisualizer {
         this.generateNoteButtons();
 
         // Console banner
-        console.log('%c🎵 PITCH.ANALYZER v1.1.4 [ADAPTIVE MODE]', 'color: #00ff41; font-size: 20px; font-weight: bold; text-shadow: 0 0 10px #00ff41;');
-        console.log('%cMulti-frequency • Harmonic filtering toggle • Adjustable sensitivity', 'color: #00ffff; font-size: 12px;');
+        console.log('%c🎵 PITCH.ANALYZER v1.2.0 [SPECTRUM MODE]', 'color: #00ff41; font-size: 20px; font-weight: bold; text-shadow: 0 0 10px #00ff41;');
+        console.log('%cSpectrum overlay • Harmonic toggle • Adaptive detection', 'color: #00ffff; font-size: 12px;');
         console.log('%c━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━', 'color: #00ff41;');
     }
 
@@ -530,9 +530,14 @@ class NoteVisualizer {
 
         const timestamp = (now - this.historyStartTime) / 1000;
 
+        // Capture full spectrum for overlay
+        const spectrumSnapshot = new Uint8Array(this.dataArray.length);
+        spectrumSnapshot.set(this.dataArray);
+
         this.waveformHistory.push({
             timestamp: timestamp,
-            amplitude: volume
+            amplitude: volume,
+            spectrum: spectrumSnapshot
         });
 
         // Remove old waveform data
@@ -809,6 +814,56 @@ class NoteVisualizer {
         document.getElementById('timelineEnd').textContent = `${end.toFixed(1)}s`;
     }
 
+    drawSpectrumOverlay(width, height, yAxisWidth, currentTime, startTime, minMidi, maxMidi) {
+        // Draw full spectrum as background
+        const sampleRate = this.audioContext ? this.audioContext.sampleRate : 48000;
+        const fftSize = this.analyser ? this.analyser.fftSize : 8192;
+        const nyquist = sampleRate / 2;
+        const binSize = nyquist / (fftSize / 2);
+
+        // Convert MIDI to frequency range
+        const minFreq = 440 * Math.pow(2, (minMidi - 69) / 12);
+        const maxFreq = 440 * Math.pow(2, (maxMidi - 69) / 12);
+
+        // Draw spectrum for each time slice
+        this.waveformHistory.forEach(item => {
+            if (!item.spectrum) return;
+
+            const x = yAxisWidth + ((item.timestamp - startTime) / this.maxHistoryDuration) * (width - yAxisWidth);
+
+            if (x < yAxisWidth || x > width) return;
+
+            // Draw vertical line of spectrum at this time
+            for (let bin = 0; bin < item.spectrum.length; bin++) {
+                const freq = bin * binSize;
+
+                // Skip frequencies outside our MIDI range
+                if (freq < minFreq || freq > maxFreq) continue;
+
+                // Convert frequency to MIDI note
+                const midiNote = 69 + 12 * Math.log2(freq / 440);
+
+                // Convert MIDI to Y position
+                const y = height - ((midiNote - minMidi) / (maxMidi - minMidi)) * height;
+
+                if (y < 0 || y > height) continue;
+
+                // Get amplitude and convert to color
+                const amplitude = item.spectrum[bin];
+                const intensity = amplitude / 255;
+
+                if (intensity < 0.1) continue; // Skip very quiet frequencies
+
+                // Rainbow gradient based on intensity
+                const hue = 120 - (intensity * 120); // Green to red
+                const alpha = intensity * 0.5; // Semi-transparent
+
+                this.timelineCtx.fillStyle = `hsla(${hue}, 100%, 50%, ${alpha})`;
+                this.timelineCtx.fillRect(x, y, 2, 1);
+            }
+        });
+    }
+
     drawTimeline() {
         const width = this.timelineCanvas.width;
         const height = this.timelineCanvas.height;
@@ -817,10 +872,8 @@ class NoteVisualizer {
         this.timelineCtx.fillStyle = 'rgba(0, 0, 0, 0.9)';
         this.timelineCtx.fillRect(0, 0, width, height);
 
-        if (this.noteHistory.length === 0) return;
-
         const now = Date.now();
-        const currentTime = (now - this.historyStartTime) / 1000;
+        const currentTime = this.historyStartTime ? (now - this.historyStartTime) / 1000 : 0;
         const startTime = Math.max(0, currentTime - this.maxHistoryDuration);
 
         // Define note range for piano roll (C2 to C7 = 60 semitones)
@@ -828,8 +881,14 @@ class NoteVisualizer {
         const maxMidi = 96; // C7 - extended higher
         const midiRange = maxMidi - minMidi;
 
-        // Draw Y-axis with all detected notes
         const yAxisWidth = 35;
+
+        // DRAW SPECTRUM OVERLAY FIRST (as background)
+        this.drawSpectrumOverlay(width, height, yAxisWidth, currentTime, startTime, minMidi, maxMidi);
+
+        if (this.noteHistory.length === 0) return;
+
+        // Draw Y-axis with all detected notes
         const sortedDetectedNotes = Array.from(this.allDetectedNotes).sort((a, b) => a - b);
 
         // Draw background for Y-axis
