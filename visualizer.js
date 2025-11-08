@@ -47,6 +47,10 @@ class NoteVisualizer {
         this.melodicLine = [];
         this.noteStreamElement = document.getElementById('noteStream');
 
+        // Note filtering (to remove noise/transients)
+        this.noteBuffer = new Map(); // MIDI note -> {startTime, lastSeenTime, confirmed}
+        this.minNoteDuration = 0.08; // Minimum 80ms to be considered a real note
+
         // Note frequencies (A4 = 440Hz standard)
         this.noteStrings = ["C", "C#", "D", "D#", "E", "F", "F#", "G", "G#", "A", "A#", "B"];
 
@@ -295,43 +299,57 @@ class NoteVisualizer {
             const freqText = detectedFrequencies.map(f => f.frequency.toFixed(1)).join(' ');
             this.frequencyElement.textContent = `${freqText} Hz`;
 
-            // Update active notes
-            this.activeNotes.clear();
-            notes.forEach(note => {
-                this.activeNotes.add(note.midiNote);
-                this.allDetectedNotes.add(note.midiNote);
-            });
+            // Filter out very short notes (noise)
+            const confirmedNotes = this.filterShortNotes(notes);
 
-            // Separate chords from melodic lines
-            if (notes.length >= 3) {
-                // Chord detected
-                this.detectChord(notes);
-            } else if (notes.length === 1 || notes.length === 2) {
-                // Melodic line (single or double stop)
-                this.addToMelodicLine(notes);
+            if (confirmedNotes.length === 0) {
+                // All notes were too short/noise
+                this.activeNotes.clear();
+            } else {
+                // Update active notes with confirmed notes only
+                this.activeNotes.clear();
+                confirmedNotes.forEach(note => {
+                    this.activeNotes.add(note.midiNote);
+                    this.allDetectedNotes.add(note.midiNote);
+                });
+
+                // Separate chords from melodic lines
+                if (confirmedNotes.length >= 3) {
+                    // Chord detected
+                    this.detectChord(confirmedNotes);
+                } else if (confirmedNotes.length === 1 || confirmedNotes.length === 2) {
+                    // Melodic line (single or double stop)
+                    this.addToMelodicLine(confirmedNotes);
+                }
+
+                // Track confirmed notes in history
+                confirmedNotes.forEach(note => {
+                    this.addNoteToHistory(note, note.frequency, volume);
+                });
             }
 
-            // Console logging for debugging
-            console.log(`%c🎵 ${noteNames}`, 'color: #00ff41; font-weight: bold;',
-                `| ${detectedFrequencies.map(f => f.frequency.toFixed(2) + 'Hz').join(', ')}`,
-                `| Cents: ${primaryNote.cents > 0 ? '+' : ''}${primaryNote.cents}`,
-                `| Vol: ${Math.round(volumePercent)}%`,
-                `| Latency: ${this.processingLatency.toFixed(1)}ms`
-            );
+            // Console logging for debugging (show confirmed notes)
+            if (confirmedNotes.length > 0) {
+                const confirmedNames = confirmedNotes.map(n => n.name).join(' ');
+                console.log(`%c🎵 ${confirmedNames}`, 'color: #00ff41; font-weight: bold;',
+                    `| ${confirmedNotes.map(n => n.frequency.toFixed(2) + 'Hz').join(', ')}`,
+                    `| Cents: ${confirmedNotes[0].cents > 0 ? '+' : ''}${confirmedNotes[0].cents}`,
+                    `| Vol: ${Math.round(volumePercent)}%`,
+                    `| Latency: ${this.processingLatency.toFixed(1)}ms`
+                );
+            }
 
-            // Track all notes in history
-            notes.forEach(note => {
-                this.addNoteToHistory(note, note.frequency, volume);
-            });
-
-            // Update pitch deviation based on loudest note
-            this.updatePitchDeviation(primaryNote.cents);
+            // Update pitch deviation based on loudest confirmed note
+            if (confirmedNotes.length > 0) {
+                this.updatePitchDeviation(confirmedNotes[0].cents);
+            }
 
             // Animate note display based on volume
             const scale = 1 + (volume / 255) * 0.2;
             this.noteNameElement.style.transform = `scale(${scale})`;
         } else {
-            // Clear active notes
+            // No notes detected - clear buffers
+            this.clearExpiredNoteBuffers();
             this.activeNotes.clear();
 
             // Show dashes when no note detected but keep volume meter active
@@ -934,6 +952,56 @@ class NoteVisualizer {
         requestAnimationFrame(() => {
             this.noteStreamElement.scrollLeft = this.noteStreamElement.scrollWidth;
         });
+    }
+
+    filterShortNotes(notes) {
+        const now = performance.now() / 1000; // Convert to seconds
+        const confirmedNotes = [];
+
+        notes.forEach(note => {
+            const midiNote = note.midiNote;
+
+            if (!this.noteBuffer.has(midiNote)) {
+                // New note detected - add to buffer
+                this.noteBuffer.set(midiNote, {
+                    startTime: now,
+                    lastSeenTime: now,
+                    confirmed: false,
+                    note: note
+                });
+            } else {
+                // Update existing note
+                const buffer = this.noteBuffer.get(midiNote);
+                buffer.lastSeenTime = now;
+
+                const duration = now - buffer.startTime;
+
+                // Confirm note if it's been playing long enough
+                if (duration >= this.minNoteDuration && !buffer.confirmed) {
+                    buffer.confirmed = true;
+                    console.log(`%c  ✓ Note confirmed: ${note.name} (${(duration * 1000).toFixed(0)}ms)`,
+                        'color: #00ffff; font-size: 10px;');
+                }
+
+                // Add to confirmed list if validated
+                if (buffer.confirmed) {
+                    confirmedNotes.push(note);
+                }
+            }
+        });
+
+        return confirmedNotes;
+    }
+
+    clearExpiredNoteBuffers() {
+        const now = performance.now() / 1000;
+        const timeout = 0.3; // Clear buffers after 300ms of silence
+
+        for (const [midiNote, buffer] of this.noteBuffer.entries()) {
+            if (now - buffer.lastSeenTime > timeout) {
+                this.noteBuffer.delete(midiNote);
+            }
+        }
     }
 
     drawVisualization() {
