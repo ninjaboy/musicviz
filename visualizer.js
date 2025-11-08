@@ -43,6 +43,10 @@ class NoteVisualizer {
         this.lastChordTime = 0;
         this.chordListElement = document.getElementById('chordList');
 
+        // Melodic line tracking (separate from chords)
+        this.melodicLine = [];
+        this.noteStreamElement = document.getElementById('noteStream');
+
         // Note frequencies (A4 = 440Hz standard)
         this.noteStrings = ["C", "C#", "D", "D#", "E", "F", "F#", "G", "G#", "A", "A#", "B"];
 
@@ -298,9 +302,13 @@ class NoteVisualizer {
                 this.allDetectedNotes.add(note.midiNote);
             });
 
-            // Detect chords (3+ notes)
+            // Separate chords from melodic lines
             if (notes.length >= 3) {
+                // Chord detected
                 this.detectChord(notes);
+            } else if (notes.length === 1 || notes.length === 2) {
+                // Melodic line (single or double stop)
+                this.addToMelodicLine(notes);
             }
 
             // Console logging for debugging
@@ -876,6 +884,56 @@ class NoteVisualizer {
                 <span class="chord-notes">${chord.notes.join(' ')}</span>
             </div>`
         ).join('');
+    }
+
+    addToMelodicLine(notes) {
+        const now = Date.now();
+        const timestamp = this.historyStartTime ? (now - this.historyStartTime) / 1000 : 0;
+
+        // Add to melodic line
+        const noteEntry = {
+            notes: notes.map(n => n.name),
+            timestamp: timestamp,
+            duration: 0
+        };
+
+        // Check if continuing previous note
+        const lastEntry = this.melodicLine[this.melodicLine.length - 1];
+        const noteString = notes.map(n => n.name).join(' ');
+
+        if (lastEntry && lastEntry.notes.join(' ') === noteString && timestamp - lastEntry.timestamp < 0.2) {
+            // Continue same note
+            lastEntry.duration = timestamp - lastEntry.timestamp;
+        } else {
+            // New note
+            this.melodicLine.push(noteEntry);
+
+            // Keep only last 50 notes
+            if (this.melodicLine.length > 50) {
+                this.melodicLine.shift();
+            }
+
+            // Update note stream display
+            this.updateNoteStream();
+        }
+    }
+
+    updateNoteStream() {
+        if (!this.noteStreamElement) return;
+
+        // Show last 20 melodic notes
+        const recentNotes = this.melodicLine.slice(-20);
+
+        this.noteStreamElement.innerHTML = recentNotes.map((entry, index) => {
+            const noteText = entry.notes.join(' ');
+            const isRecent = index >= recentNotes.length - 5;
+            return `<span class="note-stream-item ${isRecent ? 'recent' : ''}">${noteText}</span>`;
+        }).join('');
+
+        // Auto-scroll to show latest notes
+        requestAnimationFrame(() => {
+            this.noteStreamElement.scrollLeft = this.noteStreamElement.scrollWidth;
+        });
     }
 
     drawVisualization() {
