@@ -9,12 +9,6 @@ class NoteVisualizer {
         this.bufferLength = null;
         this.isRunning = false;
 
-        // Recording
-        this.mediaRecorder = null;
-        this.recordedChunks = [];
-        this.isRecording = false;
-        this.recordingStartTime = null;
-
         // Canvas setup
         this.canvas = document.getElementById('visualizer');
         this.canvasCtx = this.canvas.getContext('2d');
@@ -25,20 +19,22 @@ class NoteVisualizer {
 
         // UI elements
         this.startBtn = document.getElementById('startBtn');
-        this.recordBtn = document.getElementById('recordBtn');
         this.noteNameElement = document.getElementById('noteName');
         this.frequencyElement = document.getElementById('frequency');
         this.volumeFill = document.getElementById('volumeFill');
         this.volumePercent = document.getElementById('volumePercent');
         this.pitchIndicator = document.getElementById('pitchIndicator');
         this.pitchHint = document.getElementById('pitchHint');
-        this.recordingStatus = document.getElementById('recordingStatus');
         this.messageElement = document.getElementById('message');
+        this.latencyElement = document.getElementById('latency');
 
         // Note history tracking
         this.noteHistory = [];
         this.historyStartTime = null;
         this.maxHistoryDuration = 10; // seconds
+
+        // Waveform history for timeline visualization
+        this.waveformHistory = [];
 
         // Note frequencies (A4 = 440Hz standard)
         this.noteStrings = ["C", "C#", "D", "D#", "E", "F", "F#", "G", "G#", "A", "A#", "B"];
@@ -46,6 +42,12 @@ class NoteVisualizer {
         // Current note info
         this.currentCents = 0;
         this.targetFrequency = 0;
+
+        // Temporal smoothing for stability
+        this.smoothingBuffer = [];
+        this.smoothingBufferSize = 5; // Average over last 5 frames
+        this.lastProcessTime = 0;
+        this.processingLatency = 0;
 
         // Reference tone playback
         this.referenceOscillator = null;
@@ -59,7 +61,6 @@ class NoteVisualizer {
 
     setupEventListeners() {
         this.startBtn.addEventListener('click', () => this.toggleMicrophone());
-        this.recordBtn.addEventListener('click', () => this.toggleRecording());
 
         // Octave selector
         document.querySelectorAll('.octave-btn').forEach(btn => {
@@ -119,16 +120,6 @@ class NoteVisualizer {
                 }
             });
 
-            // Setup MediaRecorder for recording functionality
-            this.stream = stream;
-            this.mediaRecorder = new MediaRecorder(stream);
-            this.mediaRecorder.ondataavailable = (e) => {
-                if (e.data.size > 0) {
-                    this.recordedChunks.push(e.data);
-                }
-            };
-            this.mediaRecorder.onstop = () => this.processRecording();
-
             // Create analyser node
             this.analyser = this.audioContext.createAnalyser();
             this.analyser.fftSize = 8192; // Higher FFT size for better frequency resolution
@@ -145,7 +136,6 @@ class NoteVisualizer {
             this.isRunning = true;
             this.startBtn.textContent = 'Stop Listening';
             this.startBtn.classList.add('active');
-            this.recordBtn.disabled = false;
 
             this.showMessage('Microphone active! Start singing or playing.', 'success');
 
@@ -159,10 +149,6 @@ class NoteVisualizer {
     }
 
     stop() {
-        if (this.isRecording) {
-            this.stopRecording();
-        }
-
         if (this.microphone) {
             this.microphone.disconnect();
         }
@@ -176,72 +162,11 @@ class NoteVisualizer {
         this.isRunning = false;
         this.startBtn.textContent = 'Start Listening';
         this.startBtn.classList.remove('active');
-        this.recordBtn.disabled = true;
         this.noteNameElement.textContent = '--';
-        this.frequencyElement.textContent = 'Frequency: -- Hz';
+        this.frequencyElement.textContent = '-- Hz';
         this.pitchHint.innerHTML = '';
         this.volumeFill.style.width = '0%';
         this.volumePercent.textContent = '0%';
-    }
-
-    toggleRecording() {
-        if (!this.isRecording) {
-            this.startRecording();
-        } else {
-            this.stopRecording();
-        }
-    }
-
-    startRecording() {
-        this.recordedChunks = [];
-        this.mediaRecorder.start();
-        this.isRecording = true;
-        this.recordingStartTime = Date.now();
-
-        this.recordBtn.textContent = 'Stop Recording';
-        this.recordBtn.classList.add('recording');
-        this.playbackBtn.disabled = true;
-
-        this.updateRecordingTimer();
-    }
-
-    stopRecording() {
-        this.mediaRecorder.stop();
-        this.isRecording = false;
-
-        this.recordBtn.textContent = 'Record & Autotune';
-        this.recordBtn.classList.remove('recording');
-        this.recordingStatus.textContent = '';
-    }
-
-    updateRecordingTimer() {
-        if (!this.isRecording) return;
-
-        const elapsed = Math.floor((Date.now() - this.recordingStartTime) / 1000);
-        this.recordingStatus.innerHTML = `<span class="timer">Recording: ${elapsed}s</span>`;
-
-        setTimeout(() => this.updateRecordingTimer(), 100);
-    }
-
-    async processRecording() {
-        const blob = new Blob(this.recordedChunks, { type: 'audio/webm' });
-
-        // Create download link
-        const url = URL.createObjectURL(blob);
-        const a = document.createElement('a');
-        a.style.display = 'none';
-        a.href = url;
-        a.download = `pitch-recording-${Date.now()}.webm`;
-        document.body.appendChild(a);
-        a.click();
-
-        setTimeout(() => {
-            document.body.removeChild(a);
-            URL.revokeObjectURL(url);
-        }, 100);
-
-        this.showMessage('✓ Recording saved!', 'success');
-        this.recordingStatus.textContent = '';
     }
 
     playReferenceNote(btn) {
@@ -321,6 +246,8 @@ class NoteVisualizer {
     analyze() {
         if (!this.isRunning) return;
 
+        const startTime = performance.now();
+
         // Get frequency data
         this.analyser.getByteFrequencyData(this.dataArray);
 
@@ -330,22 +257,35 @@ class NoteVisualizer {
         this.volumeFill.style.width = `${volumePercent}%`;
         this.volumePercent.textContent = `${Math.round(volumePercent)}%`;
 
-        // Detect the dominant frequency
-        const frequency = this.detectPitch();
+        // Detect all frequencies (multi-note detection)
+        const detectedFrequencies = this.detectPitch();
 
-        if (frequency > 0) {
-            // Convert frequency to note
-            const note = this.frequencyToNote(frequency);
+        if (detectedFrequencies.length > 0) {
+            // Convert all frequencies to notes
+            const notes = detectedFrequencies.map(f => ({
+                ...this.frequencyToNote(f.frequency),
+                amplitude: f.amplitude,
+                confidence: f.confidence || 1.0
+            }));
 
-            // Track note in history
-            this.addNoteToHistory(note, frequency, volume);
+            // Display all detected notes
+            const noteNames = notes.map(n => n.name).join(' + ');
+            this.noteNameElement.textContent = noteNames;
 
-            // Update UI
-            this.noteNameElement.textContent = note.name;
-            this.frequencyElement.textContent = `Frequency: ${frequency.toFixed(2)} Hz`;
+            // Show frequency of loudest note
+            const primaryNote = notes[0];
+            this.frequencyElement.textContent = `${detectedFrequencies[0].frequency.toFixed(2)} Hz`;
+            if (notes.length > 1) {
+                this.frequencyElement.textContent += ` (+${notes.length - 1} more)`;
+            }
 
-            // Update pitch deviation indicator
-            this.updatePitchDeviation(note.cents);
+            // Track all notes in history
+            notes.forEach(note => {
+                this.addNoteToHistory(note, note.frequency, volume);
+            });
+
+            // Update pitch deviation based on loudest note
+            this.updatePitchDeviation(primaryNote.cents);
 
             // Animate note display based on volume
             const scale = 1 + (volume / 255) * 0.2;
@@ -353,19 +293,49 @@ class NoteVisualizer {
         } else {
             // Show dashes when no note detected but keep volume meter active
             this.noteNameElement.textContent = '--';
-            this.frequencyElement.textContent = 'Frequency: -- Hz';
+            this.frequencyElement.textContent = '-- Hz';
             this.pitchHint.innerHTML = '';
             this.pitchIndicator.style.left = '50%';
+        }
+
+        // Track waveform for timeline
+        this.trackWaveform(volume);
+
+        // Calculate and display latency
+        const endTime = performance.now();
+        this.processingLatency = endTime - startTime;
+        if (this.latencyElement) {
+            this.latencyElement.textContent = `${this.processingLatency.toFixed(1)}ms`;
         }
 
         // Draw visualization
         this.drawVisualization();
 
-        // Draw timeline
+        // Draw timeline with waveform
         this.drawTimeline();
 
         // Continue analyzing
         requestAnimationFrame(() => this.analyze());
+    }
+
+    trackWaveform(volume) {
+        const now = Date.now();
+
+        if (!this.historyStartTime) {
+            this.historyStartTime = now;
+        }
+
+        const timestamp = (now - this.historyStartTime) / 1000;
+
+        this.waveformHistory.push({
+            timestamp: timestamp,
+            amplitude: volume
+        });
+
+        // Remove old waveform data
+        this.waveformHistory = this.waveformHistory.filter(
+            item => timestamp - item.timestamp < this.maxHistoryDuration
+        );
     }
 
     updatePitchDeviation(cents) {
@@ -388,48 +358,147 @@ class NoteVisualizer {
     }
 
     detectPitch() {
+        // Multi-frequency detection with harmonic filtering
+        const frequencies = this.detectAllFrequencies();
+
+        if (frequencies.length === 0) {
+            return [];
+        }
+
+        // Apply temporal smoothing
+        this.smoothingBuffer.push(frequencies);
+        if (this.smoothingBuffer.length > this.smoothingBufferSize) {
+            this.smoothingBuffer.shift();
+        }
+
+        // Average frequencies across buffer
+        return this.smoothFrequencies();
+    }
+
+    detectAllFrequencies() {
         // Get frequency data
         this.analyser.getByteFrequencyData(this.dataArray);
 
-        // Find the peak frequency
-        let maxValue = 0;
-        let maxIdx = 0;
-
-        // Only look at frequencies between 80Hz and 2000Hz (typical musical range)
+        const nyquist = this.audioContext.sampleRate / 2;
         const minFreq = 80;
         const maxFreq = 2000;
-        const nyquist = this.audioContext.sampleRate / 2;
         const minIndex = Math.floor(minFreq / nyquist * this.bufferLength);
         const maxIndexBound = Math.floor(maxFreq / nyquist * this.bufferLength);
 
-        for (let i = minIndex; i < maxIndexBound; i++) {
-            if (this.dataArray[i] > maxValue) {
-                maxValue = this.dataArray[i];
-                maxIdx = i;
+        // Find all peaks
+        const peaks = [];
+        const threshold = 20; // Minimum amplitude
+        const peakWindow = 5; // Look for local maxima within this window
+
+        for (let i = minIndex + peakWindow; i < maxIndexBound - peakWindow; i++) {
+            const value = this.dataArray[i];
+
+            if (value < threshold) continue;
+
+            // Check if this is a local maximum
+            let isLocalMax = true;
+            for (let j = i - peakWindow; j <= i + peakWindow; j++) {
+                if (j !== i && this.dataArray[j] >= value) {
+                    isLocalMax = false;
+                    break;
+                }
+            }
+
+            if (isLocalMax) {
+                // Apply parabolic interpolation
+                let frequency = i * nyquist / this.bufferLength;
+
+                if (i > 0 && i < this.bufferLength - 1) {
+                    const y1 = this.dataArray[i - 1];
+                    const y2 = this.dataArray[i];
+                    const y3 = this.dataArray[i + 1];
+
+                    if (2 * y2 - y1 - y3 !== 0) {
+                        const delta = 0.5 * (y3 - y1) / (2 * y2 - y1 - y3);
+                        frequency = (i + delta) * nyquist / this.bufferLength;
+                    }
+                }
+
+                peaks.push({
+                    frequency: frequency,
+                    amplitude: value,
+                    index: i
+                });
             }
         }
 
-        // Lower threshold to detect quieter sounds
-        if (maxValue < 20) {
-            return 0;
+        // Sort by amplitude (loudest first)
+        peaks.sort((a, b) => b.amplitude - a.amplitude);
+
+        // Filter out harmonics - keep only fundamentals
+        const fundamentals = [];
+        for (let i = 0; i < peaks.length; i++) {
+            const peak = peaks[i];
+            let isHarmonic = false;
+
+            // Check if this frequency is a harmonic of any louder peak
+            for (let j = 0; j < fundamentals.length; j++) {
+                const fundamental = fundamentals[j];
+
+                // Check if peak is approximately an integer multiple of fundamental
+                const ratio = peak.frequency / fundamental.frequency;
+                const nearestHarmonic = Math.round(ratio);
+
+                // If ratio is close to an integer (within 5%), it's likely a harmonic
+                if (nearestHarmonic >= 2 && Math.abs(ratio - nearestHarmonic) < 0.1) {
+                    isHarmonic = true;
+                    break;
+                }
+            }
+
+            if (!isHarmonic) {
+                fundamentals.push(peak);
+            }
+
+            // Limit to top 5 fundamentals
+            if (fundamentals.length >= 5) break;
         }
 
-        // Convert bin index to frequency
-        const frequency = maxIdx * nyquist / this.bufferLength;
+        return fundamentals;
+    }
 
-        // Apply parabolic interpolation for more accuracy
-        if (maxIdx > 0 && maxIdx < this.bufferLength - 1) {
-            const y1 = this.dataArray[maxIdx - 1];
-            const y2 = this.dataArray[maxIdx];
-            const y3 = this.dataArray[maxIdx + 1];
+    smoothFrequencies() {
+        // Average detected frequencies across the smoothing buffer
+        if (this.smoothingBuffer.length === 0) return [];
 
-            const delta = 0.5 * (y3 - y1) / (2 * y2 - y1 - y3);
-            const interpolatedIndex = maxIdx + delta;
+        // Build frequency map
+        const frequencyMap = new Map();
 
-            return interpolatedIndex * nyquist / this.bufferLength;
-        }
+        this.smoothingBuffer.forEach(frameFreqs => {
+            frameFreqs.forEach(peak => {
+                // Round to nearest note for grouping
+                const noteNum = 12 * (Math.log(peak.frequency / 440) / Math.log(2));
+                const roundedNote = Math.round(noteNum);
 
-        return frequency;
+                if (!frequencyMap.has(roundedNote)) {
+                    frequencyMap.set(roundedNote, []);
+                }
+                frequencyMap.get(roundedNote).push(peak);
+            });
+        });
+
+        // Average each note group
+        const smoothed = [];
+        frequencyMap.forEach((peaks, noteNum) => {
+            const avgFreq = peaks.reduce((sum, p) => sum + p.frequency, 0) / peaks.length;
+            const avgAmp = peaks.reduce((sum, p) => sum + p.amplitude, 0) / peaks.length;
+
+            smoothed.push({
+                frequency: avgFreq,
+                amplitude: avgAmp,
+                confidence: peaks.length / this.smoothingBufferSize
+            });
+        });
+
+        // Sort by amplitude
+        smoothed.sort((a, b) => b.amplitude - a.amplitude);
+
+        return smoothed;
     }
 
     frequencyToNote(frequency) {
@@ -513,58 +582,103 @@ class NoteVisualizer {
         const height = this.timelineCanvas.height;
 
         // Clear canvas
-        this.timelineCtx.fillStyle = 'rgba(0, 0, 0, 0.5)';
+        this.timelineCtx.fillStyle = 'rgba(0, 0, 0, 0.8)';
         this.timelineCtx.fillRect(0, 0, width, height);
 
-        if (this.noteHistory.length === 0) return;
+        if (this.noteHistory.length === 0 && this.waveformHistory.length === 0) return;
 
         const now = Date.now();
         const currentTime = (now - this.historyStartTime) / 1000;
         const startTime = Math.max(0, currentTime - this.maxHistoryDuration);
 
-        // Draw notes
+        // Draw waveform heartbeat (amplitude over time)
+        if (this.waveformHistory.length > 1) {
+            this.timelineCtx.beginPath();
+            this.timelineCtx.strokeStyle = 'rgba(0, 255, 65, 0.4)';
+            this.timelineCtx.lineWidth = 2;
+
+            let firstPoint = true;
+            this.waveformHistory.forEach(item => {
+                const x = ((item.timestamp - startTime) / this.maxHistoryDuration) * width;
+                const normalizedAmp = item.amplitude / 255;
+                const y = height - (normalizedAmp * height * 0.7);
+
+                if (firstPoint) {
+                    this.timelineCtx.moveTo(x, y);
+                    firstPoint = false;
+                } else {
+                    this.timelineCtx.lineTo(x, y);
+                }
+            });
+
+            this.timelineCtx.stroke();
+
+            // Fill area under waveform with gradient
+            this.timelineCtx.lineTo(width, height);
+            this.timelineCtx.lineTo(((this.waveformHistory[0].timestamp - startTime) / this.maxHistoryDuration) * width, height);
+            this.timelineCtx.closePath();
+
+            const gradient = this.timelineCtx.createLinearGradient(0, 0, 0, height);
+            gradient.addColorStop(0, 'rgba(0, 255, 65, 0.3)');
+            gradient.addColorStop(1, 'rgba(0, 255, 65, 0.0)');
+            this.timelineCtx.fillStyle = gradient;
+            this.timelineCtx.fill();
+        }
+
+        // Draw note markers on top of waveform
         this.noteHistory.forEach((item, index) => {
             const x = ((item.timestamp - startTime) / this.maxHistoryDuration) * width;
-            const noteHeight = 20;
-            const y = height / 2 - noteHeight / 2;
 
             // Color based on note type
             let color;
             if (item.note === 'OTHER') {
-                color = 'rgba(255, 170, 0, 0.6)'; // Orange for other
+                color = 'rgba(255, 170, 0, 0.8)'; // Orange
             } else if (Math.abs(item.cents) < 5) {
-                color = 'rgba(0, 255, 255, 0.8)'; // Cyan for perfect
+                color = 'rgba(0, 255, 255, 1.0)'; // Cyan for perfect
             } else {
-                color = 'rgba(0, 255, 65, 0.6)'; // Green for standard notes
+                color = 'rgba(0, 255, 65, 0.8)'; // Green
             }
 
-            // Draw note block
-            this.timelineCtx.fillStyle = color;
-            this.timelineCtx.fillRect(x, y, 3, noteHeight);
+            // Draw vertical note marker
+            this.timelineCtx.strokeStyle = color;
+            this.timelineCtx.lineWidth = 2;
+            this.timelineCtx.beginPath();
+            this.timelineCtx.moveTo(x, height * 0.3);
+            this.timelineCtx.lineTo(x, height);
+            this.timelineCtx.stroke();
 
-            // Add glow effect
-            if (index === this.noteHistory.length - 1) {
+            // Add glow effect for recent notes
+            if (index >= this.noteHistory.length - 10) {
                 this.timelineCtx.shadowColor = color;
-                this.timelineCtx.shadowBlur = 10;
-                this.timelineCtx.fillRect(x, y, 3, noteHeight);
+                this.timelineCtx.shadowBlur = 8;
+                this.timelineCtx.strokeStyle = color;
+                this.timelineCtx.beginPath();
+                this.timelineCtx.moveTo(x, height * 0.3);
+                this.timelineCtx.lineTo(x, height);
+                this.timelineCtx.stroke();
                 this.timelineCtx.shadowBlur = 0;
             }
 
-            // Draw note label occasionally
-            if (index % 30 === 0 && item.note !== 'OTHER') {
-                this.timelineCtx.fillStyle = 'rgba(0, 255, 65, 0.9)';
+            // Draw note label for perfect pitches
+            if (Math.abs(item.cents) < 5 && index % 20 === 0 && item.note !== 'OTHER') {
+                this.timelineCtx.fillStyle = 'rgba(0, 255, 255, 0.9)';
                 this.timelineCtx.font = '10px "Share Tech Mono", monospace';
-                this.timelineCtx.fillText(item.note, x, y - 5);
+                this.timelineCtx.shadowColor = 'rgba(0, 255, 255, 0.8)';
+                this.timelineCtx.shadowBlur = 5;
+                this.timelineCtx.fillText(item.note, x + 2, height * 0.25);
+                this.timelineCtx.shadowBlur = 0;
             }
         });
 
         // Draw current time indicator
-        this.timelineCtx.strokeStyle = 'rgba(0, 255, 255, 0.8)';
+        this.timelineCtx.strokeStyle = 'rgba(0, 255, 255, 0.6)';
         this.timelineCtx.lineWidth = 2;
+        this.timelineCtx.setLineDash([5, 5]);
         this.timelineCtx.beginPath();
         this.timelineCtx.moveTo(width - 2, 0);
         this.timelineCtx.lineTo(width - 2, height);
         this.timelineCtx.stroke();
+        this.timelineCtx.setLineDash([]);
     }
 
     drawVisualization() {
