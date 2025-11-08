@@ -57,6 +57,11 @@ class NoteVisualizer {
 
         this.setupEventListeners();
         this.generateNoteButtons();
+
+        // Console banner
+        console.log('%c🎵 PITCH.ANALYZER v1.0.4', 'color: #00ff41; font-size: 20px; font-weight: bold; text-shadow: 0 0 10px #00ff41;');
+        console.log('%cMulti-frequency detection • Harmonic filtering • Real-time analysis', 'color: #00ffff; font-size: 12px;');
+        console.log('%c━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━', 'color: #00ff41;');
     }
 
     setupEventListeners() {
@@ -138,6 +143,12 @@ class NoteVisualizer {
             this.startBtn.classList.add('active');
 
             this.showMessage('Microphone active! Start singing or playing.', 'success');
+
+            console.log('%c▶ Analysis started', 'color: #00ff41; font-weight: bold;');
+            console.log(`  Sample Rate: ${this.audioContext.sampleRate}Hz`);
+            console.log(`  FFT Size: ${this.analyser.fftSize}`);
+            console.log(`  Frequency Resolution: ${(this.audioContext.sampleRate / this.analyser.fftSize).toFixed(2)}Hz/bin`);
+            console.log(`  Smoothing: ${this.smoothingBufferSize} frames`);
 
             // Start the analysis loop
             this.analyze();
@@ -278,6 +289,14 @@ class NoteVisualizer {
             if (notes.length > 1) {
                 this.frequencyElement.textContent += ` (+${notes.length - 1} more)`;
             }
+
+            // Console logging for debugging
+            console.log(`%c🎵 ${noteNames}`, 'color: #00ff41; font-weight: bold;',
+                `| ${detectedFrequencies.map(f => f.frequency.toFixed(2) + 'Hz').join(', ')}`,
+                `| Cents: ${primaryNote.cents > 0 ? '+' : ''}${primaryNote.cents}`,
+                `| Vol: ${Math.round(volumePercent)}%`,
+                `| Latency: ${this.processingLatency.toFixed(1)}ms`
+            );
 
             // Track all notes in history
             notes.forEach(note => {
@@ -447,6 +466,8 @@ class NoteVisualizer {
                 // If ratio is close to an integer (within 5%), it's likely a harmonic
                 if (nearestHarmonic >= 2 && Math.abs(ratio - nearestHarmonic) < 0.1) {
                     isHarmonic = true;
+                    console.log(`%c  ⚠️ Filtered harmonic: ${peak.frequency.toFixed(2)}Hz (${nearestHarmonic}x of ${fundamental.frequency.toFixed(2)}Hz)`,
+                        'color: #ffaa00; font-size: 10px;');
                     break;
                 }
             }
@@ -457,6 +478,11 @@ class NoteVisualizer {
 
             // Limit to top 5 fundamentals
             if (fundamentals.length >= 5) break;
+        }
+
+        if (fundamentals.length > 0) {
+            console.log(`%c  ✓ Found ${fundamentals.length} fundamental(s) from ${peaks.length} peak(s)`,
+                'color: #00ffff; font-size: 10px;');
         }
 
         return fundamentals;
