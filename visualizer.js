@@ -49,11 +49,11 @@ class NoteVisualizer {
 
         // Note filtering (to remove noise/transients)
         this.noteBuffer = new Map(); // MIDI note -> {startTime, lastSeenTime, confirmed}
-        this.minNoteDuration = 0.12; // Minimum 120ms to be considered a real note (increased from 80ms)
+        this.minNoteDuration = 0.15; // Minimum 150ms to be considered a real note (VERY aggressive)
 
-        // Aggressive noise filtering
-        this.minAmplitudeThreshold = 30; // Increased from 20 - filter quieter noise
-        this.minConfidenceForDisplay = 0.4; // Notes must appear in 40% of smoothing frames
+        // ULTRA AGGRESSIVE noise filtering
+        this.minAmplitudeThreshold = 50; // Massively increased - only loud clear notes
+        this.minConfidenceForDisplay = 0.6; // Notes must appear in 60% of smoothing frames (3/5)
 
         // Note frequencies (A4 = 440Hz standard)
         this.noteStrings = ["C", "C#", "D", "D#", "E", "F", "F#", "G", "G#", "A", "A#", "B"];
@@ -64,7 +64,7 @@ class NoteVisualizer {
 
         // Temporal smoothing for stability
         this.smoothingBuffer = [];
-        this.smoothingBufferSize = 5; // Average over last 5 frames
+        this.smoothingBufferSize = 8; // Increased from 5 - more smoothing for stability
         this.lastProcessTime = 0;
         this.processingLatency = 0;
 
@@ -78,7 +78,7 @@ class NoteVisualizer {
         this.generateNoteButtons();
 
         // Console banner
-        console.log('%c🎵 PITCH.ANALYZER v1.1.0', 'color: #00ff41; font-size: 20px; font-weight: bold; text-shadow: 0 0 10px #00ff41;');
+        console.log('%c🎵 PITCH.ANALYZER v1.1.1 [ULTRA CLEAN MODE]', 'color: #00ff41; font-size: 20px; font-weight: bold; text-shadow: 0 0 10px #00ff41;');
         console.log('%cMulti-frequency detection • Harmonic filtering • Real-time analysis', 'color: #00ffff; font-size: 12px;');
         console.log('%c━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━', 'color: #00ff41;');
     }
@@ -509,9 +509,9 @@ class NoteVisualizer {
                 const ratio = peak.frequency / fundamental.frequency;
                 const nearestHarmonic = Math.round(ratio);
 
-                // AGGRESSIVE: Increased tolerance from 10% to 15% to catch more harmonics
+                // ULTRA AGGRESSIVE: 20% tolerance to catch more edge cases
                 // Also check sub-harmonics (1/2, 1/3, etc.)
-                const harmonicTolerance = 0.15;
+                const harmonicTolerance = 0.20;
 
                 // Check integer harmonics (2x, 3x, 4x, 5x)
                 if (nearestHarmonic >= 2 && nearestHarmonic <= 8 &&
@@ -551,8 +551,8 @@ class NoteVisualizer {
                 fundamentals.push(peak);
             }
 
-            // Limit to top 4 fundamentals (reduced from 5 for cleaner detection)
-            if (fundamentals.length >= 4) break;
+            // Limit to top 3 fundamentals (ultra strict - reduced from 4)
+            if (fundamentals.length >= 3) break;
         }
 
         if (fundamentals.length > 0) {
