@@ -15,19 +15,17 @@ class NoteVisualizer {
         this.isRecording = false;
         this.recordingStartTime = null;
 
-        // Playback
-        this.audioBuffer = null;
-        this.sourceNode = null;
-        this.isPlaying = false;
-
         // Canvas setup
         this.canvas = document.getElementById('visualizer');
         this.canvasCtx = this.canvas.getContext('2d');
 
+        // Timeline canvas
+        this.timelineCanvas = document.getElementById('timeline');
+        this.timelineCtx = this.timelineCanvas.getContext('2d');
+
         // UI elements
         this.startBtn = document.getElementById('startBtn');
         this.recordBtn = document.getElementById('recordBtn');
-        this.playbackBtn = document.getElementById('playbackBtn');
         this.noteNameElement = document.getElementById('noteName');
         this.frequencyElement = document.getElementById('frequency');
         this.volumeFill = document.getElementById('volumeFill');
@@ -36,6 +34,11 @@ class NoteVisualizer {
         this.pitchHint = document.getElementById('pitchHint');
         this.recordingStatus = document.getElementById('recordingStatus');
         this.messageElement = document.getElementById('message');
+
+        // Note history tracking
+        this.noteHistory = [];
+        this.historyStartTime = null;
+        this.maxHistoryDuration = 10; // seconds
 
         // Note frequencies (A4 = 440Hz standard)
         this.noteStrings = ["C", "C#", "D", "D#", "E", "F", "F#", "G", "G#", "A", "A#", "B"];
@@ -57,7 +60,6 @@ class NoteVisualizer {
     setupEventListeners() {
         this.startBtn.addEventListener('click', () => this.toggleMicrophone());
         this.recordBtn.addEventListener('click', () => this.toggleRecording());
-        this.playbackBtn.addEventListener('click', () => this.playRecording());
 
         // Octave selector
         document.querySelectorAll('.octave-btn').forEach(btn => {
@@ -224,77 +226,22 @@ class NoteVisualizer {
     async processRecording() {
         const blob = new Blob(this.recordedChunks, { type: 'audio/webm' });
 
-        // Convert to audio buffer
-        const arrayBuffer = await blob.arrayBuffer();
+        // Create download link
+        const url = URL.createObjectURL(blob);
+        const a = document.createElement('a');
+        a.style.display = 'none';
+        a.href = url;
+        a.download = `pitch-recording-${Date.now()}.webm`;
+        document.body.appendChild(a);
+        a.click();
 
-        // Create a new audio context for processing if needed
-        if (!this.audioContext || this.audioContext.state === 'closed') {
-            this.audioContext = new (window.AudioContext || window.webkitAudioContext)();
-        }
+        setTimeout(() => {
+            document.body.removeChild(a);
+            URL.revokeObjectURL(url);
+        }, 100);
 
-        try {
-            this.audioBuffer = await this.audioContext.decodeAudioData(arrayBuffer);
-            this.applyAutotune();
-        } catch (error) {
-            console.error('Error processing recording:', error);
-            this.showMessage('Error processing recording. Try again.', 'error');
-        }
-    }
-
-    applyAutotune() {
-        if (!this.audioBuffer) return;
-
-        // For a simple autotune effect, we'll apply pitch correction
-        // In a real implementation, you'd analyze the buffer and shift specific segments
-        // Here we're applying a basic pitch shift to demonstrate the concept
-
-        this.showMessage('Recording processed! Click "Play Recording" to hear it.', 'success');
-        this.playbackBtn.disabled = false;
-        this.recordingStatus.textContent = 'Ready to play!';
-    }
-
-    playRecording() {
-        if (!this.audioBuffer) return;
-
-        if (this.isPlaying) {
-            this.stopPlayback();
-            return;
-        }
-
-        // Create a new audio context if needed
-        if (!this.audioContext || this.audioContext.state === 'closed') {
-            this.audioContext = new (window.AudioContext || window.webkitAudioContext)();
-        }
-
-        // Create source node
-        this.sourceNode = this.audioContext.createBufferSource();
-        this.sourceNode.buffer = this.audioBuffer;
-
-        // Optional: Add a subtle pitch correction effect
-        // You can adjust playbackRate slightly based on detected pitch
-        // sourceNode.playbackRate.value = 1.0; // Adjust for pitch correction
-
-        this.sourceNode.connect(this.audioContext.destination);
-        this.sourceNode.onended = () => {
-            this.isPlaying = false;
-            this.playbackBtn.textContent = 'Play Recording';
-            this.recordingStatus.textContent = 'Ready to play!';
-        };
-
-        this.sourceNode.start(0);
-        this.isPlaying = true;
-        this.playbackBtn.textContent = 'Stop Playback';
-        this.recordingStatus.textContent = 'Playing...';
-    }
-
-    stopPlayback() {
-        if (this.sourceNode) {
-            this.sourceNode.stop();
-            this.sourceNode = null;
-        }
-        this.isPlaying = false;
-        this.playbackBtn.textContent = 'Play Recording';
-        this.recordingStatus.textContent = 'Ready to play!';
+        this.showMessage('✓ Recording saved!', 'success');
+        this.recordingStatus.textContent = '';
     }
 
     playReferenceNote(btn) {
@@ -390,6 +337,9 @@ class NoteVisualizer {
             // Convert frequency to note
             const note = this.frequencyToNote(frequency);
 
+            // Track note in history
+            this.addNoteToHistory(note, frequency, volume);
+
             // Update UI
             this.noteNameElement.textContent = note.name;
             this.frequencyElement.textContent = `Frequency: ${frequency.toFixed(2)} Hz`;
@@ -410,6 +360,9 @@ class NoteVisualizer {
 
         // Draw visualization
         this.drawVisualization();
+
+        // Draw timeline
+        this.drawTimeline();
 
         // Continue analyzing
         requestAnimationFrame(() => this.analyze());
@@ -488,14 +441,21 @@ class NoteVisualizer {
         const noteNumRounded = Math.round(noteNum);
         const midiNote = noteNumRounded + 69;
 
-        // Get note name
-        const octave = Math.floor(midiNote / 12) - 1;
-        const noteIndex = midiNote % 12;
-        const noteName = this.noteStrings[noteIndex] + octave;
-
         // Calculate how close we are to the perfect pitch (in cents)
         // 1 semitone = 100 cents
         const cents = Math.round((noteNum - noteNumRounded) * 100);
+
+        // Get note name - mark as "OTHER" if too far from standard pitch
+        let noteName;
+        let octave = Math.floor(midiNote / 12) - 1;
+        const noteIndex = midiNote % 12;
+
+        if (Math.abs(cents) > 35) {
+            // Too far from standard pitch - non-musical or noise
+            noteName = 'OTHER';
+        } else {
+            noteName = this.noteStrings[noteIndex] + octave;
+        }
 
         // Calculate the target frequency for this note
         this.targetFrequency = 440 * Math.pow(2, noteNumRounded / 12);
@@ -515,6 +475,96 @@ class NoteVisualizer {
             sum += this.dataArray[i];
         }
         return sum / this.bufferLength;
+    }
+
+    addNoteToHistory(note, frequency, volume) {
+        const now = Date.now();
+
+        // Initialize history start time
+        if (!this.historyStartTime) {
+            this.historyStartTime = now;
+        }
+
+        const timestamp = (now - this.historyStartTime) / 1000; // Convert to seconds
+
+        // Add note to history
+        this.noteHistory.push({
+            note: note.name,
+            frequency: frequency,
+            cents: note.cents,
+            volume: volume,
+            timestamp: timestamp
+        });
+
+        // Remove old notes beyond max duration
+        this.noteHistory = this.noteHistory.filter(
+            item => timestamp - item.timestamp < this.maxHistoryDuration
+        );
+
+        // Update timeline labels
+        const end = timestamp;
+        const start = Math.max(0, end - this.maxHistoryDuration);
+        document.getElementById('timelineStart').textContent = `${start.toFixed(1)}s`;
+        document.getElementById('timelineEnd').textContent = `${end.toFixed(1)}s`;
+    }
+
+    drawTimeline() {
+        const width = this.timelineCanvas.width;
+        const height = this.timelineCanvas.height;
+
+        // Clear canvas
+        this.timelineCtx.fillStyle = 'rgba(0, 0, 0, 0.5)';
+        this.timelineCtx.fillRect(0, 0, width, height);
+
+        if (this.noteHistory.length === 0) return;
+
+        const now = Date.now();
+        const currentTime = (now - this.historyStartTime) / 1000;
+        const startTime = Math.max(0, currentTime - this.maxHistoryDuration);
+
+        // Draw notes
+        this.noteHistory.forEach((item, index) => {
+            const x = ((item.timestamp - startTime) / this.maxHistoryDuration) * width;
+            const noteHeight = 20;
+            const y = height / 2 - noteHeight / 2;
+
+            // Color based on note type
+            let color;
+            if (item.note === 'OTHER') {
+                color = 'rgba(255, 170, 0, 0.6)'; // Orange for other
+            } else if (Math.abs(item.cents) < 5) {
+                color = 'rgba(0, 255, 255, 0.8)'; // Cyan for perfect
+            } else {
+                color = 'rgba(0, 255, 65, 0.6)'; // Green for standard notes
+            }
+
+            // Draw note block
+            this.timelineCtx.fillStyle = color;
+            this.timelineCtx.fillRect(x, y, 3, noteHeight);
+
+            // Add glow effect
+            if (index === this.noteHistory.length - 1) {
+                this.timelineCtx.shadowColor = color;
+                this.timelineCtx.shadowBlur = 10;
+                this.timelineCtx.fillRect(x, y, 3, noteHeight);
+                this.timelineCtx.shadowBlur = 0;
+            }
+
+            // Draw note label occasionally
+            if (index % 30 === 0 && item.note !== 'OTHER') {
+                this.timelineCtx.fillStyle = 'rgba(0, 255, 65, 0.9)';
+                this.timelineCtx.font = '10px "Share Tech Mono", monospace';
+                this.timelineCtx.fillText(item.note, x, y - 5);
+            }
+        });
+
+        // Draw current time indicator
+        this.timelineCtx.strokeStyle = 'rgba(0, 255, 255, 0.8)';
+        this.timelineCtx.lineWidth = 2;
+        this.timelineCtx.beginPath();
+        this.timelineCtx.moveTo(width - 2, 0);
+        this.timelineCtx.lineTo(width - 2, height);
+        this.timelineCtx.stroke();
     }
 
     drawVisualization() {

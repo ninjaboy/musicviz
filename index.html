@@ -167,6 +167,38 @@
             box-shadow: none;
         }
 
+        /* Record Button */
+        .record-btn {
+            display: flex;
+            align-items: center;
+            gap: 8px;
+            justify-content: center;
+        }
+
+        .record-icon {
+            width: 12px;
+            height: 12px;
+            border-radius: 50%;
+            background: var(--danger);
+            box-shadow: 0 0 8px rgba(255, 0, 64, 0.6);
+            display: inline-block;
+        }
+
+        .record-btn.recording .record-icon {
+            animation: recordPulse 1s infinite;
+        }
+
+        @keyframes recordPulse {
+            0%, 100% {
+                box-shadow: 0 0 8px rgba(255, 0, 64, 0.6);
+                transform: scale(1);
+            }
+            50% {
+                box-shadow: 0 0 20px rgba(255, 0, 64, 1);
+                transform: scale(1.2);
+            }
+        }
+
         /* Main Display Grid */
         .display-grid {
             display: grid;
@@ -373,6 +405,49 @@
             height: auto;
             max-width: 100%;
             box-shadow: inset 0 0 20px rgba(0, 255, 65, 0.1);
+        }
+
+        /* Note History Timeline */
+        .timeline-card {
+            margin-bottom: 10px;
+        }
+
+        .timeline-container {
+            position: relative;
+            height: 100px;
+            background: rgba(0, 0, 0, 0.8);
+            border: 1px solid var(--dim-green);
+            overflow: hidden;
+            margin-top: 10px;
+        }
+
+        .timeline-grid {
+            position: absolute;
+            width: 100%;
+            height: 100%;
+            background-image: repeating-linear-gradient(90deg,
+                var(--dim-green) 0px,
+                var(--dim-green) 1px,
+                transparent 1px,
+                transparent 40px);
+            opacity: 0.2;
+        }
+
+        .timeline-canvas {
+            position: absolute;
+            top: 0;
+            left: 0;
+            width: 100%;
+            height: 100%;
+        }
+
+        .timeline-info {
+            display: flex;
+            justify-content: space-between;
+            margin-top: 8px;
+            font-size: 0.65rem;
+            color: var(--dim-green);
+            font-family: 'Share Tech Mono', monospace;
         }
 
         /* Recording Controls */
@@ -729,8 +804,10 @@
         <div class="control-panel">
             <div class="button-group">
                 <button id="startBtn">Start Listening</button>
-                <button id="recordBtn" disabled>Record & Autotune</button>
-                <button id="playbackBtn" disabled>Play Recording</button>
+                <button id="recordBtn" class="record-btn" disabled>
+                    <span class="record-icon"></span>
+                    <span class="record-text">Record</span>
+                </button>
             </div>
             <div class="recording-info">
                 <span id="recordingStatus"></span>
@@ -788,6 +865,18 @@
         <div class="visualizer-card">
             <div class="card-title">Frequency Spectrum</div>
             <canvas id="visualizer" width="1000" height="300"></canvas>
+        </div>
+
+        <div class="timeline-card note-card">
+            <div class="card-title">Note History</div>
+            <div class="timeline-container">
+                <div class="timeline-grid"></div>
+                <canvas id="timeline" class="timeline-canvas" width="1000" height="100"></canvas>
+            </div>
+            <div class="timeline-info">
+                <span id="timelineStart">0.0s</span>
+                <span id="timelineEnd">10.0s</span>
+            </div>
         </div>
 
         <div class="info-section">
