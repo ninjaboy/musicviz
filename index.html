@@ -426,6 +426,51 @@
             height: 80px !important;
         }
 
+        .timeline-row {
+            display: grid;
+            grid-template-columns: 1fr 250px;
+            gap: 8px;
+            margin-bottom: 8px;
+        }
+
+        .chord-panel {
+            padding: 8px;
+        }
+
+        .chord-list {
+            max-height: 300px;
+            overflow-y: auto;
+            font-size: 0.75rem;
+            line-height: 1.4;
+        }
+
+        .chord-item {
+            padding: 5px 8px;
+            margin-bottom: 3px;
+            background: rgba(0, 255, 65, 0.05);
+            border-left: 2px solid var(--cyan);
+        }
+
+        .chord-name {
+            color: var(--cyan);
+            font-weight: bold;
+            display: block;
+            margin-bottom: 2px;
+        }
+
+        .chord-notes {
+            color: var(--dim-green);
+            font-size: 0.7rem;
+        }
+
+        .chord-empty {
+            color: var(--dim-green);
+            opacity: 0.5;
+            text-align: center;
+            padding: 20px;
+            font-size: 0.7rem;
+        }
+
         .timeline-grid {
             position: absolute;
             width: 100%;
@@ -600,6 +645,14 @@
 
             .compact-viz canvas {
                 height: 60px !important;
+            }
+
+            .timeline-row {
+                grid-template-columns: 1fr;
+            }
+
+            .chord-panel {
+                display: none;
             }
 
             .display-grid {
@@ -876,15 +929,24 @@
             </div>
         </div>
 
-        <div class="timeline-card note-card">
-            <div class="card-title">Note History</div>
-            <div class="timeline-container">
-                <div class="timeline-grid"></div>
-                <canvas id="timeline" class="timeline-canvas" width="1000" height="100"></canvas>
+        <div class="timeline-row">
+            <div class="timeline-card note-card">
+                <div class="card-title">Note History</div>
+                <div class="timeline-container">
+                    <div class="timeline-grid"></div>
+                    <canvas id="timeline" class="timeline-canvas" width="1000" height="100"></canvas>
+                </div>
+                <div class="timeline-info">
+                    <span id="timelineStart">0.0s</span>
+                    <span id="timelineEnd">10.0s</span>
+                </div>
             </div>
-            <div class="timeline-info">
-                <span id="timelineStart">0.0s</span>
-                <span id="timelineEnd">10.0s</span>
+
+            <div class="chord-panel note-card">
+                <div class="card-title">Detected Chords</div>
+                <div id="chordList" class="chord-list">
+                    <div class="chord-empty">Play 3+ notes to detect chords</div>
+                </div>
             </div>
         </div>
 

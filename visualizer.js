@@ -34,6 +34,15 @@ class NoteVisualizer {
         // Waveform history for timeline visualization
         this.waveformHistory = [];
 
+        // Active notes tracking (for Y-axis highlighting)
+        this.activeNotes = new Set(); // Currently playing MIDI notes
+        this.allDetectedNotes = new Set(); // All notes ever detected
+
+        // Chord detection
+        this.detectedChords = [];
+        this.lastChordTime = 0;
+        this.chordListElement = document.getElementById('chordList');
+
         // Note frequencies (A4 = 440Hz standard)
         this.noteStrings = ["C", "C#", "D", "D#", "E", "F", "F#", "G", "G#", "A", "A#", "B"];
 
@@ -282,6 +291,18 @@ class NoteVisualizer {
             const freqText = detectedFrequencies.map(f => f.frequency.toFixed(1)).join(' ');
             this.frequencyElement.textContent = `${freqText} Hz`;
 
+            // Update active notes
+            this.activeNotes.clear();
+            notes.forEach(note => {
+                this.activeNotes.add(note.midiNote);
+                this.allDetectedNotes.add(note.midiNote);
+            });
+
+            // Detect chords (3+ notes)
+            if (notes.length >= 3) {
+                this.detectChord(notes);
+            }
+
             // Console logging for debugging
             console.log(`%c🎵 ${noteNames}`, 'color: #00ff41; font-weight: bold;',
                 `| ${detectedFrequencies.map(f => f.frequency.toFixed(2) + 'Hz').join(', ')}`,
@@ -302,6 +323,9 @@ class NoteVisualizer {
             const scale = 1 + (volume / 255) * 0.2;
             this.noteNameElement.style.transform = `scale(${scale})`;
         } else {
+            // Clear active notes
+            this.activeNotes.clear();
+
             // Show dashes when no note detected but keep volume meter active
             this.noteNameElement.textContent = '--';
             this.frequencyElement.textContent = '-- Hz';
@@ -608,23 +632,55 @@ class NoteVisualizer {
         const maxMidi = 84; // C6
         const midiRange = maxMidi - minMidi;
 
-        // Draw horizontal grid lines for octaves
-        this.timelineCtx.strokeStyle = 'rgba(0, 255, 65, 0.1)';
-        this.timelineCtx.lineWidth = 1;
-        for (let octave = 3; octave <= 6; octave++) {
-            const midiC = (octave + 1) * 12; // C note of this octave
-            const y = height - ((midiC - minMidi) / midiRange) * height;
+        // Draw Y-axis with all detected notes
+        const yAxisWidth = 35;
+        const sortedDetectedNotes = Array.from(this.allDetectedNotes).sort((a, b) => a - b);
 
+        // Draw background for Y-axis
+        this.timelineCtx.fillStyle = 'rgba(0, 0, 0, 0.95)';
+        this.timelineCtx.fillRect(0, 0, yAxisWidth, height);
+
+        // Draw horizontal grid lines for all detected notes
+        sortedDetectedNotes.forEach(midiNote => {
+            if (midiNote < minMidi || midiNote > maxMidi) return;
+
+            const y = height - ((midiNote - minMidi) / midiRange) * height;
+            const noteName = this.midiToNoteName(midiNote);
+            const isActive = this.activeNotes.has(midiNote);
+
+            // Grid line
+            this.timelineCtx.strokeStyle = isActive ?
+                'rgba(0, 255, 255, 0.3)' : 'rgba(0, 255, 65, 0.08)';
+            this.timelineCtx.lineWidth = isActive ? 2 : 1;
             this.timelineCtx.beginPath();
-            this.timelineCtx.moveTo(0, y);
+            this.timelineCtx.moveTo(yAxisWidth, y);
             this.timelineCtx.lineTo(width, y);
             this.timelineCtx.stroke();
 
-            // Label octave
-            this.timelineCtx.fillStyle = 'rgba(0, 255, 65, 0.4)';
-            this.timelineCtx.font = '9px "Share Tech Mono", monospace';
-            this.timelineCtx.fillText(`C${octave}`, 3, y - 2);
-        }
+            // Note label
+            this.timelineCtx.fillStyle = isActive ?
+                'rgba(0, 255, 255, 1.0)' : 'rgba(0, 255, 65, 0.5)';
+            this.timelineCtx.font = isActive ?
+                'bold 10px "Share Tech Mono", monospace' :
+                '9px "Share Tech Mono", monospace';
+
+            // Add glow for active notes
+            if (isActive) {
+                this.timelineCtx.shadowColor = 'rgba(0, 255, 255, 0.8)';
+                this.timelineCtx.shadowBlur = 8;
+            }
+
+            this.timelineCtx.fillText(noteName, 3, y + 3);
+            this.timelineCtx.shadowBlur = 0;
+        });
+
+        // Draw Y-axis border
+        this.timelineCtx.strokeStyle = 'rgba(0, 255, 65, 0.3)';
+        this.timelineCtx.lineWidth = 1;
+        this.timelineCtx.beginPath();
+        this.timelineCtx.moveTo(yAxisWidth, 0);
+        this.timelineCtx.lineTo(yAxisWidth, height);
+        this.timelineCtx.stroke();
 
         // Group consecutive notes into horizontal bars (piano roll style)
         const noteGroups = new Map(); // Map of "midiNote" -> array of time segments
@@ -661,8 +717,8 @@ class NoteVisualizer {
             groups.forEach(group => {
                 if (midiNote < minMidi || midiNote > maxMidi) return;
 
-                const x1 = ((group.startTime - startTime) / this.maxHistoryDuration) * width;
-                const x2 = ((group.endTime - startTime) / this.maxHistoryDuration) * width;
+                const x1 = yAxisWidth + ((group.startTime - startTime) / this.maxHistoryDuration) * (width - yAxisWidth);
+                const x2 = yAxisWidth + ((group.endTime - startTime) / this.maxHistoryDuration) * (width - yAxisWidth);
                 const barWidth = Math.max(x2 - x1, 3); // Minimum 3px width
 
                 // Calculate Y position (piano roll style)
@@ -729,6 +785,97 @@ class NoteVisualizer {
         if (noteIndex === -1) return 60;
 
         return (octave + 1) * 12 + noteIndex;
+    }
+
+    midiToNoteName(midiNote) {
+        const octave = Math.floor(midiNote / 12) - 1;
+        const noteIndex = midiNote % 12;
+        return this.noteStrings[noteIndex] + octave;
+    }
+
+    detectChord(notes) {
+        // Only detect chords every 500ms to avoid spam
+        const now = Date.now();
+        if (now - this.lastChordTime < 500) return;
+
+        // Sort by pitch
+        const sortedNotes = [...notes].sort((a, b) => a.midiNote - b.midiNote);
+        const noteNames = sortedNotes.map(n => n.name.replace(/\d+/, '')); // Remove octave
+        const intervals = [];
+
+        // Calculate intervals from root
+        for (let i = 1; i < sortedNotes.length; i++) {
+            intervals.push((sortedNotes[i].midiNote - sortedNotes[0].midiNote) % 12);
+        }
+
+        const chordName = this.identifyChord(sortedNotes[0].name, intervals, noteNames);
+
+        if (chordName) {
+            this.lastChordTime = now;
+
+            // Add to chord list if not duplicate
+            const lastChord = this.detectedChords[this.detectedChords.length - 1];
+            if (!lastChord || lastChord.name !== chordName) {
+                this.detectedChords.push({
+                    name: chordName,
+                    notes: sortedNotes.map(n => n.name),
+                    timestamp: (now - this.historyStartTime) / 1000
+                });
+
+                // Update chord list UI
+                this.updateChordList();
+
+                console.log(`%c🎸 Chord: ${chordName}`, 'color: #00ffff; font-weight: bold; font-size: 14px;',
+                    `| Notes: ${sortedNotes.map(n => n.name).join(' ')}`);
+            }
+        }
+    }
+
+    identifyChord(root, intervals, noteNames) {
+        const intervalsStr = intervals.join(',');
+
+        // Major chords
+        if (intervalsStr === '4,7') return `${root} Major`;
+        if (intervalsStr === '4,7,11') return `${root} Major 7`;
+        if (intervalsStr === '4,7,10') return `${root} Dominant 7`;
+
+        // Minor chords
+        if (intervalsStr === '3,7') return `${root} Minor`;
+        if (intervalsStr === '3,7,10') return `${root} Minor 7`;
+        if (intervalsStr === '3,7,11') return `${root} Minor Major 7`;
+
+        // Diminished & Augmented
+        if (intervalsStr === '3,6') return `${root} Diminished`;
+        if (intervalsStr === '3,6,9') return `${root} Diminished 7`;
+        if (intervalsStr === '4,8') return `${root} Augmented`;
+
+        // Sus chords
+        if (intervalsStr === '2,7') return `${root} Sus2`;
+        if (intervalsStr === '5,7') return `${root} Sus4`;
+
+        // Extended chords
+        if (intervalsStr === '4,7,10,2') return `${root} 9`;
+        if (intervalsStr === '3,7,10,2') return `${root} Minor 9`;
+
+        // Power chord (no third)
+        if (intervalsStr === '7') return `${root}5 (Power)`;
+
+        // Generic
+        return `${root} Chord (${noteNames.join(' ')})`;
+    }
+
+    updateChordList() {
+        if (!this.chordListElement) return;
+
+        // Show last 10 chords
+        const recentChords = this.detectedChords.slice(-10).reverse();
+
+        this.chordListElement.innerHTML = recentChords.map(chord =>
+            `<div class="chord-item">
+                <span class="chord-name">${chord.name}</span>
+                <span class="chord-notes">${chord.notes.join(' ')}</span>
+            </div>`
+        ).join('');
     }
 
     drawVisualization() {
