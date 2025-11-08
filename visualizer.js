@@ -280,15 +280,13 @@ class NoteVisualizer {
             }));
 
             // Display all detected notes
-            const noteNames = notes.map(n => n.name).join(' + ');
+            const noteNames = notes.map(n => n.name).join(' ');
             this.noteNameElement.textContent = noteNames;
 
             // Show frequency of loudest note
             const primaryNote = notes[0];
-            this.frequencyElement.textContent = `${detectedFrequencies[0].frequency.toFixed(2)} Hz`;
-            if (notes.length > 1) {
-                this.frequencyElement.textContent += ` (+${notes.length - 1} more)`;
-            }
+            const freqText = detectedFrequencies.map(f => f.frequency.toFixed(1)).join(' ');
+            this.frequencyElement.textContent = `${freqText} Hz`;
 
             // Console logging for debugging
             console.log(`%c🎵 ${noteNames}`, 'color: #00ff41; font-weight: bold;',

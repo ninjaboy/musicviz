@@ -118,8 +118,8 @@
             background: transparent;
             border: 1px solid var(--matrix-green);
             color: var(--matrix-green);
-            padding: 8px 16px;
-            font-size: clamp(0.7rem, 1.5vw, 0.85rem);
+            padding: 6px 12px;
+            font-size: 0.7rem;
             font-weight: 400;
             font-family: 'Share Tech Mono', monospace;
             cursor: pointer;
@@ -213,15 +213,22 @@
             color: var(--dim-green);
         }
 
+        .compact-card {
+            padding: 5px 8px;
+        }
+
         .detected-note {
-            font-size: clamp(2rem, 8vw, 4rem);
+            font-size: clamp(1.2rem, 4vw, 1.8rem);
             font-weight: 400;
-            margin: 10px 0;
+            margin: 3px 0;
             color: var(--matrix-green);
-            text-shadow: 0 0 20px rgba(0, 255, 65, 0.8), 0 0 40px rgba(0, 255, 65, 0.4);
+            text-shadow: 0 0 10px rgba(0, 255, 65, 0.8);
             transition: all 0.1s ease;
-            line-height: 1;
+            line-height: 1.2;
             font-family: 'Share Tech Mono', monospace;
+            white-space: nowrap;
+            overflow: hidden;
+            text-overflow: ellipsis;
         }
 
         .frequency {
@@ -384,11 +391,34 @@
 
         .timeline-container {
             position: relative;
-            height: 70px;
+            height: 300px;
             background: rgba(0, 0, 0, 0.8);
             border: 1px solid var(--dim-green);
             overflow: hidden;
             margin-top: 8px;
+        }
+
+        .compact-row {
+            display: grid;
+            grid-template-columns: 1fr 1fr;
+            gap: 8px;
+            margin-bottom: 8px;
+        }
+
+        .compact-reference {
+            padding: 5px 8px;
+        }
+
+        .compact-reference .card-title {
+            display: none;
+        }
+
+        .compact-viz {
+            padding: 5px 8px;
+        }
+
+        .compact-viz canvas {
+            height: 80px !important;
         }
 
         .timeline-grid {
@@ -555,8 +585,16 @@
             }
 
             .timeline-container {
-                height: 60px;
+                height: 250px;
                 margin-top: 6px;
+            }
+
+            .compact-row {
+                grid-template-columns: 1fr;
+            }
+
+            .compact-viz canvas {
+                height: 60px !important;
             }
 
             .display-grid {
@@ -714,20 +752,17 @@
 
         .note-buttons {
             display: grid;
-            grid-template-columns: repeat(auto-fit, minmax(60px, 1fr));
-            gap: 8px;
-            margin-top: 15px;
-            max-width: 800px;
-            margin-left: auto;
-            margin-right: auto;
+            grid-template-columns: repeat(12, 1fr);
+            gap: 3px;
+            margin-top: 5px;
         }
 
         .note-btn {
             background: rgba(0, 0, 0, 0.6);
             border: 1px solid var(--dim-green);
             color: var(--matrix-green);
-            padding: 10px 8px;
-            font-size: 0.8rem;
+            padding: 5px 3px;
+            font-size: 0.65rem;
             font-weight: 400;
             font-family: 'Share Tech Mono', monospace;
             cursor: pointer;
@@ -756,19 +791,19 @@
 
         .octave-selector {
             display: flex;
-            gap: 8px;
-            justify-content: center;
+            gap: 3px;
+            justify-content: flex-start;
             align-items: center;
-            margin-top: 10px;
-            flex-wrap: wrap;
+            margin-bottom: 5px;
+            flex-wrap: nowrap;
         }
 
         .octave-btn {
             background: rgba(0, 0, 0, 0.6);
             border: 1px solid var(--dim-green);
             color: var(--dim-green);
-            padding: 6px 14px;
-            font-size: 0.75rem;
+            padding: 3px 8px;
+            font-size: 0.65rem;
             font-weight: 400;
             font-family: 'Share Tech Mono', monospace;
             cursor: pointer;
@@ -817,55 +852,25 @@
         </div>
 
         <div class="display-grid">
-            <div class="note-card">
-                <div class="card-title">Detected Note</div>
+            <div class="note-card compact-card">
                 <div class="detected-note" id="noteName">--</div>
-                <div class="frequency" id="frequency">Frequency: -- Hz</div>
+                <div class="frequency" id="frequency">-- Hz</div>
+            </div>
 
-                <div class="pitch-deviation">
-                    <div class="card-title">Pitch Accuracy</div>
-                    <div class="pitch-meter">
-                        <div class="pitch-gradient"></div>
-                        <div class="pitch-center-line"></div>
-                        <div class="pitch-indicator" id="pitchIndicator"></div>
-                    </div>
-                    <div class="pitch-labels">
-                        <span>-50¢</span>
-                        <span>Perfect</span>
-                        <span>+50¢</span>
-                    </div>
-                    <div class="pitch-hint" id="pitchHint"></div>
+            <div class="note-card compact-card">
+                <div class="card-title">Pitch Accuracy</div>
+                <div class="pitch-meter">
+                    <div class="pitch-gradient"></div>
+                    <div class="pitch-center-line"></div>
+                    <div class="pitch-indicator" id="pitchIndicator"></div>
                 </div>
-            </div>
-
-            <div class="volume-card">
-                <div class="card-title">Input Level</div>
-                <div class="volume-bar">
-                    <div class="volume-fill" id="volumeFill"></div>
+                <div class="pitch-labels">
+                    <span>-50¢</span>
+                    <span>Perfect</span>
+                    <span>+50¢</span>
                 </div>
-                <div class="recording-info" style="margin-top: 15px;">
-                    <div id="volumePercent">0%</div>
-                </div>
+                <div class="pitch-hint" id="pitchHint"></div>
             </div>
-        </div>
-
-        <div class="reference-panel">
-            <div class="card-title">Reference Notes</div>
-            <div class="octave-selector">
-                <span style="opacity: 0.7;">Octave:</span>
-                <button class="octave-btn" data-octave="3">3</button>
-                <button class="octave-btn active" data-octave="4">4</button>
-                <button class="octave-btn" data-octave="5">5</button>
-                <button class="octave-btn" data-octave="6">6</button>
-            </div>
-            <div class="note-buttons" id="noteButtons">
-                <!-- Notes will be generated by JavaScript -->
-            </div>
-        </div>
-
-        <div class="visualizer-card">
-            <div class="card-title">Frequency Spectrum</div>
-            <canvas id="visualizer" width="1000" height="300"></canvas>
         </div>
 
         <div class="timeline-card note-card">
@@ -877,6 +882,24 @@
             <div class="timeline-info">
                 <span id="timelineStart">0.0s</span>
                 <span id="timelineEnd">10.0s</span>
+            </div>
+        </div>
+
+        <div class="compact-row">
+            <div class="reference-panel compact-reference">
+                <div class="octave-selector">
+                    <button class="octave-btn" data-octave="3">3</button>
+                    <button class="octave-btn active" data-octave="4">4</button>
+                    <button class="octave-btn" data-octave="5">5</button>
+                    <button class="octave-btn" data-octave="6">6</button>
+                </div>
+                <div class="note-buttons" id="noteButtons">
+                    <!-- Notes will be generated by JavaScript -->
+                </div>
+            </div>
+
+            <div class="visualizer-card compact-viz">
+                <canvas id="visualizer" width="1000" height="100"></canvas>
             </div>
         </div>
 
