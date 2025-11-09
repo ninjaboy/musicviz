@@ -79,12 +79,19 @@ class NoteVisualizer {
         this.lastLoggedNotes = null;
         this.lastLoggedChord = null;
 
+        // Song recording/playback
+        this.recordedSongs = [];
+        this.isPlayingBack = false;
+        this.playbackOscillators = [];
+        this.loadSongsFromStorage();
+
         this.setupEventListeners();
         this.generateNoteButtons();
+        this.updateSongLibrary();
 
         // Console banner
-        console.log('%c🎵 PITCH.ANALYZER v1.2.0 [SPECTRUM MODE]', 'color: #00ff41; font-size: 20px; font-weight: bold; text-shadow: 0 0 10px #00ff41;');
-        console.log('%cSpectrum overlay • Harmonic toggle • Adaptive detection', 'color: #00ffff; font-size: 12px;');
+        console.log('%c🎵 PITCH.ANALYZER v1.3.0 [SONG RECORDER]', 'color: #00ff41; font-size: 20px; font-weight: bold; text-shadow: 0 0 10px #00ff41;');
+        console.log('%cRecord & playback • Export/import songs • Spectrum overlay', 'color: #00ffff; font-size: 12px;');
         console.log('%c━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━', 'color: #00ff41;');
     }
 
@@ -1305,9 +1312,262 @@ class NoteVisualizer {
         this.canvasCtx.stroke();
         this.canvasCtx.shadowBlur = 0;
     }
+
+    // ==================== SONG RECORDING/PLAYBACK ====================
+
+    snapshotSong() {
+        if (this.noteHistory.length === 0) {
+            this.showMessage('No notes to snapshot! Play something first.', 'error');
+            return null;
+        }
+
+        // Create a snapshot of the current note history
+        const songName = prompt('Name your song:', `Song ${this.recordedSongs.length + 1}`);
+        if (!songName) return null;
+
+        // Process note history into song events
+        const events = [];
+        const noteGroups = new Map(); // Track note starts and ends
+
+        this.noteHistory.forEach(item => {
+            const midiNote = item.midiNote || this.noteToMidi(item.note);
+            const timestamp = item.timestamp;
+
+            if (!noteGroups.has(midiNote)) {
+                noteGroups.set(midiNote, []);
+            }
+
+            const groups = noteGroups.get(midiNote);
+            const lastGroup = groups[groups.length - 1];
+
+            // Group consecutive detections into single note events
+            if (lastGroup && timestamp - lastGroup.endTime < 0.15) {
+                lastGroup.endTime = timestamp;
+            } else {
+                groups.push({
+                    midiNote: midiNote,
+                    startTime: timestamp,
+                    endTime: timestamp,
+                    frequency: item.frequency,
+                    note: item.note
+                });
+            }
+        });
+
+        // Convert groups to events
+        noteGroups.forEach(groups => {
+            groups.forEach(group => {
+                events.push({
+                    type: 'note',
+                    midiNote: group.midiNote,
+                    note: group.note,
+                    frequency: group.frequency,
+                    startTime: group.startTime,
+                    duration: group.endTime - group.startTime + 0.1
+                });
+            });
+        });
+
+        // Sort by start time
+        events.sort((a, b) => a.startTime - b.startTime);
+
+        const song = {
+            name: songName,
+            timestamp: Date.now(),
+            duration: events.length > 0 ? events[events.length - 1].startTime + events[events.length - 1].duration : 0,
+            events: events,
+            noteCount: events.length
+        };
+
+        this.recordedSongs.push(song);
+        this.saveSongsToStorage();
+        this.updateSongLibrary();
+
+        console.log(`%c📼 Song recorded: "${songName}"`, 'color: #00ff41; font-weight: bold;');
+        console.log(`  ${events.length} notes, ${song.duration.toFixed(1)}s duration`);
+        this.showMessage(`Song "${songName}" recorded! (${events.length} notes)`, 'success');
+
+        return song;
+    }
+
+    async playSong(songIndex) {
+        if (this.isPlayingBack) {
+            this.stopPlayback();
+            return;
+        }
+
+        const song = this.recordedSongs[songIndex];
+        if (!song) return;
+
+        this.isPlayingBack = true;
+        this.showMessage(`Playing "${song.name}"...`, 'success');
+        console.log(`%c▶ Playing: "${song.name}"`, 'color: #00ffff; font-weight: bold;');
+
+        // Create audio context if needed
+        if (!this.audioContext || this.audioContext.state === 'closed') {
+            this.audioContext = new (window.AudioContext || window.webkitAudioContext)();
+        }
+
+        const startTime = this.audioContext.currentTime;
+
+        // Schedule all notes
+        song.events.forEach(event => {
+            const frequency = 440 * Math.pow(2, (event.midiNote - 69) / 12);
+            const noteStartTime = startTime + event.startTime;
+            const noteEndTime = noteStartTime + event.duration;
+
+            // Create oscillator and gain for this note
+            const osc = this.audioContext.createOscillator();
+            const gain = this.audioContext.createGain();
+
+            osc.type = 'sine';
+            osc.frequency.setValueAtTime(frequency, noteStartTime);
+
+            // Envelope: fade in and out
+            gain.gain.setValueAtTime(0, noteStartTime);
+            gain.gain.linearRampToValueAtTime(0.2, noteStartTime + 0.01); // Fast attack
+            gain.gain.linearRampToValueAtTime(0.2, noteEndTime - 0.05); // Sustain
+            gain.gain.linearRampToValueAtTime(0, noteEndTime); // Release
+
+            osc.connect(gain);
+            gain.connect(this.audioContext.destination);
+
+            osc.start(noteStartTime);
+            osc.stop(noteEndTime);
+
+            this.playbackOscillators.push({ osc, gain });
+        });
+
+        // Stop playback after song finishes
+        setTimeout(() => {
+            this.stopPlayback();
+            this.showMessage(`Finished playing "${song.name}"`, 'success');
+        }, song.duration * 1000 + 100);
+    }
+
+    stopPlayback() {
+        this.playbackOscillators.forEach(({ osc }) => {
+            try {
+                osc.stop();
+            } catch (e) {
+                // Already stopped
+            }
+        });
+        this.playbackOscillators = [];
+        this.isPlayingBack = false;
+    }
+
+    exportSong(songIndex) {
+        const song = this.recordedSongs[songIndex];
+        if (!song) return;
+
+        const json = JSON.stringify(song, null, 2);
+        const blob = new Blob([json], { type: 'application/json' });
+        const url = URL.createObjectURL(blob);
+        const a = document.createElement('a');
+        a.href = url;
+        a.download = `${song.name.replace(/[^a-z0-9]/gi, '_')}.json`;
+        a.click();
+        URL.revokeObjectURL(url);
+
+        this.showMessage(`Exported "${song.name}" as JSON`, 'success');
+    }
+
+    importSong() {
+        const input = document.createElement('input');
+        input.type = 'file';
+        input.accept = '.json';
+        input.onchange = (e) => {
+            const file = e.target.files[0];
+            if (!file) return;
+
+            const reader = new FileReader();
+            reader.onload = (event) => {
+                try {
+                    const song = JSON.parse(event.target.result);
+                    // Validate song structure
+                    if (!song.name || !song.events || !Array.isArray(song.events)) {
+                        throw new Error('Invalid song format');
+                    }
+                    this.recordedSongs.push(song);
+                    this.saveSongsToStorage();
+                    this.updateSongLibrary();
+                    this.showMessage(`Imported "${song.name}"`, 'success');
+                } catch (error) {
+                    this.showMessage('Failed to import song: ' + error.message, 'error');
+                }
+            };
+            reader.readAsText(file);
+        };
+        input.click();
+    }
+
+    deleteSong(songIndex) {
+        const song = this.recordedSongs[songIndex];
+        if (!song) return;
+
+        if (confirm(`Delete "${song.name}"?`)) {
+            this.recordedSongs.splice(songIndex, 1);
+            this.saveSongsToStorage();
+            this.updateSongLibrary();
+            this.showMessage(`Deleted "${song.name}"`, 'success');
+        }
+    }
+
+    saveSongsToStorage() {
+        try {
+            localStorage.setItem('pitchAnalyzerSongs', JSON.stringify(this.recordedSongs));
+        } catch (e) {
+            console.error('Failed to save songs to storage:', e);
+        }
+    }
+
+    loadSongsFromStorage() {
+        try {
+            const stored = localStorage.getItem('pitchAnalyzerSongs');
+            if (stored) {
+                this.recordedSongs = JSON.parse(stored);
+                console.log(`%c📚 Loaded ${this.recordedSongs.length} song(s) from storage`, 'color: #00ffff;');
+            }
+        } catch (e) {
+            console.error('Failed to load songs from storage:', e);
+            this.recordedSongs = [];
+        }
+    }
+
+    updateSongLibrary() {
+        const libraryElement = document.getElementById('songLibrary');
+        if (!libraryElement) return;
+
+        if (this.recordedSongs.length === 0) {
+            libraryElement.innerHTML = '<div class="song-empty">No songs recorded yet. Click "Snapshot Song" to save your performance!</div>';
+            return;
+        }
+
+        libraryElement.innerHTML = this.recordedSongs.map((song, index) => {
+            const date = new Date(song.timestamp);
+            return `
+                <div class="song-item">
+                    <div class="song-header">
+                        <span class="song-name">${song.name}</span>
+                        <span class="song-info">${song.noteCount} notes • ${song.duration.toFixed(1)}s</span>
+                    </div>
+                    <div class="song-meta">${date.toLocaleString()}</div>
+                    <div class="song-controls">
+                        <button class="song-btn" onclick="visualizer.playSong(${index})">${this.isPlayingBack ? '⏹ Stop' : '▶ Play'}</button>
+                        <button class="song-btn" onclick="visualizer.exportSong(${index})">💾 Export</button>
+                        <button class="song-btn song-delete" onclick="visualizer.deleteSong(${index})">🗑 Delete</button>
+                    </div>
+                </div>
+            `;
+        }).join('');
+    }
 }
+
+// Global reference for button callbacks
+let visualizer;
 
 // Initialize the visualizer when the page loads
 document.addEventListener('DOMContentLoaded', () => {
-    new NoteVisualizer();
+    visualizer = new NoteVisualizer();
 });

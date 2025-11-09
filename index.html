@@ -3,7 +3,7 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
-    <title>PITCH.ANALYZER v1.2.0</title>
+    <title>PITCH.ANALYZER v1.3.0</title>
     <link rel="icon" href="data:image/svg+xml,<svg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 100 100'><text y='80' font-size='80' fill='%2300ff41'>🎵</text></svg>">
     <style>
         * {
@@ -294,6 +294,119 @@
         .toggle-label:hover .toggle-text {
             color: var(--cyan);
             text-shadow: 0 0 5px rgba(0, 255, 255, 0.5);
+        }
+
+        /* Song Library */
+        .song-library-panel {
+            margin-bottom: 10px;
+            padding: 12px;
+        }
+
+        .song-library {
+            max-height: 400px;
+            overflow-y: auto;
+        }
+
+        .song-library::-webkit-scrollbar {
+            width: 6px;
+        }
+
+        .song-library::-webkit-scrollbar-track {
+            background: rgba(0, 0, 0, 0.3);
+        }
+
+        .song-library::-webkit-scrollbar-thumb {
+            background: var(--matrix-green);
+            border-radius: 3px;
+        }
+
+        .song-empty {
+            text-align: center;
+            color: var(--dim-green);
+            opacity: 0.7;
+            padding: 20px;
+            font-size: 0.75rem;
+            font-style: italic;
+        }
+
+        .song-item {
+            background: rgba(0, 255, 65, 0.05);
+            border: 1px solid rgba(0, 255, 65, 0.2);
+            border-left: 3px solid var(--cyan);
+            padding: 10px 12px;
+            margin-bottom: 8px;
+            transition: all 0.3s ease;
+        }
+
+        .song-item:hover {
+            background: rgba(0, 255, 65, 0.1);
+            border-color: var(--cyan);
+            box-shadow: 0 0 15px rgba(0, 255, 255, 0.3);
+        }
+
+        .song-header {
+            display: flex;
+            justify-content: space-between;
+            align-items: center;
+            margin-bottom: 5px;
+        }
+
+        .song-name {
+            font-size: 0.85rem;
+            font-weight: bold;
+            color: var(--cyan);
+            font-family: 'Share Tech Mono', monospace;
+        }
+
+        .song-info {
+            font-size: 0.7rem;
+            color: var(--dim-green);
+            font-family: 'Share Tech Mono', monospace;
+        }
+
+        .song-meta {
+            font-size: 0.65rem;
+            color: var(--dim-green);
+            opacity: 0.7;
+            margin-bottom: 8px;
+            font-family: 'Share Tech Mono', monospace;
+        }
+
+        .song-controls {
+            display: flex;
+            gap: 6px;
+            flex-wrap: wrap;
+        }
+
+        .song-btn {
+            background: transparent;
+            border: 1px solid var(--dim-green);
+            color: var(--dim-green);
+            padding: 4px 10px;
+            font-size: 0.7rem;
+            font-weight: 400;
+            font-family: 'Share Tech Mono', monospace;
+            cursor: pointer;
+            transition: all 0.2s ease;
+        }
+
+        .song-btn:hover {
+            background: rgba(0, 255, 65, 0.15);
+            border-color: var(--matrix-green);
+            color: var(--matrix-green);
+            box-shadow: 0 0 10px rgba(0, 255, 65, 0.4);
+        }
+
+        .song-delete {
+            border-color: var(--danger);
+            color: var(--danger);
+        }
+
+        .song-delete:hover {
+            background: rgba(255, 0, 64, 0.15);
+            border-color: var(--danger);
+            color: var(--danger);
+            box-shadow: 0 0 10px rgba(255, 0, 64, 0.4);
         }
 
         .button-group {
@@ -1167,12 +1280,14 @@
         <header>
             <h1>PITCH.ANALYZER</h1>
             <p class="subtitle">MULTI-FREQ | HARMONIC FILTER | <span id="latency">0ms</span> LAT</p>
-            <span class="version">v1.2.0</span>
+            <span class="version">v1.3.0</span>
         </header>
 
         <div class="control-panel">
             <div class="button-group">
                 <button id="startBtn">Start Listening</button>
+                <button id="snapshotBtn" onclick="visualizer.snapshotSong()">📼 Snapshot Song</button>
+                <button id="importBtn" onclick="visualizer.importSong()">📥 Import Song</button>
             </div>
             <div id="message" class="message"></div>
         </div>
@@ -1278,6 +1393,13 @@
                 <div id="chordList" class="chord-list">
                     <div class="chord-empty">Play 3+ notes to detect chords</div>
                 </div>
+            </div>
+        </div>
+
+        <div class="song-library-panel note-card">
+            <div class="card-title">Recorded Songs</div>
+            <div id="songLibrary" class="song-library">
+                <div class="song-empty">No songs recorded yet. Click "Snapshot Song" to save your performance!</div>
             </div>
         </div>
 
